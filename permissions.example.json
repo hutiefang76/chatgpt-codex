@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "workspace": "/absolute/path/to/your/project",
+  "operating_system": "macos",
+  "access_plan": "built-in-quick-tunnel",
+  "public_base_url": "https://actions.example.com",
+  "allow_browser_automation": true,
+  "allow_start_services": true,
+  "allow_install_helpers": true,
+  "allow_workspace_write": true,
+  "allow_command_execution": true,
+  "hostname": "actions.example.com",
+  "created_at": ""
+}

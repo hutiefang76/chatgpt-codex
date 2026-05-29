@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChatGPT Codex Setup"
+  short_description: "Configure ChatGPT local coding bridge"
+  default_prompt: "Use $chatgpt-codex to set up my ChatGPT local coding bridge."

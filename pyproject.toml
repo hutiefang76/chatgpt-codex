@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatgpt-codex"
+version = "0.1.0"
+description = "An AI-native local coding bridge for ChatGPT Custom GPT Actions."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "hutiefang76" }]
+keywords = ["chatgpt", "custom-gpt", "actions", "coding", "local"]
+dependencies = []
+
+[project.scripts]
+chatgpt-codex = "chatgpt_codex.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["chatgpt_codex*"]

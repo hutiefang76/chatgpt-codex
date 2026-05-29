@@ -1,0 +1,8 @@
+{
+  "workspace": "/absolute/path/to/your/project",
+  "token": "generate-with-chatgpt-codex-init",
+  "host": "127.0.0.1",
+  "port": 8766,
+  "public_base_url": "https://actions.example.com"
+}
+

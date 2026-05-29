@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.coverage
+dist/
+build/
+*.egg-info/
+.workflow/
+
+# Local secrets and per-machine state.
+.chatgpt-codex/
+*.log

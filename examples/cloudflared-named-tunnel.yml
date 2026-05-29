@@ -1,0 +1,11 @@
+# Replace these placeholders with your Cloudflare tunnel values.
+# 将这些占位符替换成你自己的 Cloudflare Tunnel 信息。
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /Users/YOUR_USER/.cloudflared/YOUR_TUNNEL_ID.json
+
+# Route your public HTTPS hostname to the local ChatGPT Codex server.
+# 将公网 HTTPS 域名转发到本地 ChatGPT Codex 服务。
+ingress:
+  - hostname: actions.example.com
+    service: http://127.0.0.1:8766
+  - service: http_status:404
