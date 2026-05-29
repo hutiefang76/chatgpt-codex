@@ -228,6 +228,7 @@ class CliTests(unittest.TestCase):
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_port}"
+                run_quietly(["--config", str(config_path), "set-public-url", base_url])
                 stdout = io.StringIO()
                 with contextlib.redirect_stdout(stdout):
                     exit_code = main(["--config", str(config_path), "verify", "--base-url", base_url])
@@ -237,6 +238,8 @@ class CliTests(unittest.TestCase):
                 self.assertTrue(result["ok"])
                 self.assertEqual(len(result["checks"]), 3)
                 self.assertTrue(all(check["ok"] for check in result["checks"]))
+                self.assertEqual(result["checks"][1]["server_url"], base_url)
+                self.assertNotIn("_content", stdout.getvalue())
             finally:
                 server.shutdown()
                 server.server_close()

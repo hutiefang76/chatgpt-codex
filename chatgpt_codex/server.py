@@ -4,7 +4,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Dict, Optional
 
-from .config import AppConfig, save_config
+from .config import AppConfig, load_config, save_config
 from .executor import CommandExecutor
 from .openapi import make_openapi_document
 from .workspace import WorkspaceTools
@@ -41,6 +41,12 @@ def create_server(config: AppConfig, config_file: Optional[Path] = None) -> Thre
         with config_lock:
             return config.workspace_status()
 
+    def public_base_url() -> str:
+        with config_lock:
+            if config_file is not None and Path(config_file).exists():
+                config.public_base_url = load_config(Path(config_file)).public_base_url
+            return config.public_base_url.rstrip("/")
+
     def switch_workspace(name: str) -> Dict[str, object]:
         with config_lock:
             result = config.switch_workspace(name)
@@ -58,12 +64,12 @@ def create_server(config: AppConfig, config_file: Optional[Path] = None) -> Thre
                         "ok": True,
                         "workspace": status["workspace"],
                         "active_workspace": status["active_workspace"],
-                        "public_base_url": config.public_base_url.rstrip("/"),
+                        "public_base_url": public_base_url(),
                     }
                 )
                 return
             if self.path == "/openapi.json":
-                self._send_json(make_openapi_document(config.public_base_url))
+                self._send_json(make_openapi_document(public_base_url()))
                 return
             if self.path == "/privacy":
                 self._send_text(PRIVACY_TEXT)

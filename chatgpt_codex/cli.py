@@ -355,7 +355,7 @@ def _verify_actions(config: AppConfig, base_url: str, timeout: int) -> dict:
     base = base_url.rstrip("/")
     checks = [
         _verify_get(f"{base}/health", timeout),
-        _verify_get(f"{base}/openapi.json", timeout),
+        _verify_openapi(f"{base}/openapi.json", base, timeout),
         _verify_post(
             f"{base}/list_files",
             {"path": ".", "recursive": False, "max_results": 20},
@@ -363,6 +363,8 @@ def _verify_actions(config: AppConfig, base_url: str, timeout: int) -> dict:
             timeout,
         ),
     ]
+    for check in checks:
+        check.pop("_content", None)
     return {
         "ok": all(check["ok"] for check in checks),
         "base_url": base,
@@ -374,6 +376,24 @@ def _verify_actions(config: AppConfig, base_url: str, timeout: int) -> dict:
 
 def _verify_get(url: str, timeout: int) -> dict:
     return _verify_request(Request(url, method="GET"), timeout, url)
+
+
+def _verify_openapi(url: str, expected_base_url: str, timeout: int) -> dict:
+    check = _verify_request(Request(url, method="GET"), timeout, url)
+    if not check["ok"]:
+        return check
+    try:
+        document = json.loads(check.pop("_content"))
+        servers = document.get("servers", [])
+        actual_base_url = servers[0].get("url", "") if servers else ""
+        check["server_url"] = actual_base_url
+        check["ok"] = actual_base_url.rstrip("/") == expected_base_url.rstrip("/")
+        if not check["ok"]:
+            check["error"] = f"OpenAPI server URL mismatch: {actual_base_url}"
+    except (KeyError, TypeError, ValueError) as exc:
+        check["ok"] = False
+        check["error"] = f"invalid OpenAPI document: {exc}"
+    return check
 
 
 def _verify_post(url: str, body: dict, token: str, timeout: int) -> dict:
@@ -394,8 +414,8 @@ def _verify_request(request: Request, timeout: int, url: str) -> dict:
     opener = build_opener(ProxyHandler({}))
     try:
         response = opener.open(request, timeout=max(1, int(timeout or 10)))
-        content = response.read(4096).decode("utf-8", errors="replace")
-        return {"url": url, "ok": 200 <= response.status < 300, "status": response.status, "preview": content[:300]}
+        content = response.read().decode("utf-8", errors="replace")
+        return {"url": url, "ok": 200 <= response.status < 300, "status": response.status, "preview": content[:300], "_content": content}
     except HTTPError as exc:
         content = exc.read(4096).decode("utf-8", errors="replace")
         return {"url": url, "ok": False, "status": exc.code, "error": content[:300]}
