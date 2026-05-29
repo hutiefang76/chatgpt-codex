@@ -27,31 +27,27 @@ By the end, the user should have:
 
 ## Ask First / 先问用户
 
-Ask for these inputs before making changes:
+Ask only for the minimal human inputs before making changes:
 
-执行前先询问这些信息：
+执行前只询问真人必须提供的最小信息：
 
-1. Workspace path to expose.
-2. Operating system: macOS or Windows.
-3. Access plan: local-only test, built-in quick tunnel, custom domain, or existing HTTPS route.
-4. Local port, default `8766`.
-5. Whether their ChatGPT account can create Custom GPTs with Actions.
-6. Permission to open Chrome and automate ChatGPT Builder after the user logs in manually.
-7. Permission to start local background services.
-8. Permission to install helper tools when the chosen access plan requires them.
-9. If using a custom domain or existing HTTPS route, the hostname and routing details.
+1. Chrome human login to ChatGPT: required. The user logs in manually; never ask for credentials.
+2. Workspace path to expose: required.
+3. Chrome human login to Cloudflare: optional, only for stable Cloudflare-hosted routing.
+4. Cloudflare-managed domain: optional. If present, the fixed hostname is `chatgpt-codex.<domain>`.
+5. Local authorization: required. Confirm permission to detect the OS, choose the route, install needed helpers, start local services, open Chrome, configure Builder after human login, write the workspace, and execute commands inside the workspace.
 
 中文：
 
-1. 要暴露的 workspace 路径。
-2. 操作系统：macOS 或 Windows。
-3. 访问方案：仅本地测试、内置临时隧道、自定义域名，或已有 HTTPS 入口。
-4. 本地端口，默认 `8766`。
-5. ChatGPT 账号是否能创建带 Actions 的 Custom GPT。
-6. 是否允许打开 Chrome，并在用户手动登录后自动配置 ChatGPT Builder。
-7. 是否允许启动本地后台服务。
-8. 当所选入口方案需要辅助工具时，是否允许自动安装。
-9. 如果使用自定义域名或已有 HTTPS 入口，提供 hostname 和路由信息。
+1. Chrome 真人登录 ChatGPT：必须。用户手动登录；不要索要凭据。
+2. 要暴露的 workspace 路径：必须。
+3. Chrome 真人登录 Cloudflare：可选，仅用于稳定的 Cloudflare 托管入口。
+4. Cloudflare 管理的域名：可选。如果提供，固定 hostname 为 `chatgpt-codex.<domain>`。
+5. 本地授权：必须。确认允许自动识别系统、选择入口方案、安装必要辅助工具、启动本地服务、打开 Chrome、在真人登录后配置 Builder、写入 workspace，并在 workspace 内执行命令。
+
+Do not ask the user to choose the OS, access plan, local port, or subdomain unless they explicitly want to override defaults. Detect the OS, use port `8766`, pick a temporary HTTPS tunnel when no Cloudflare login/domain are available, and pick `https://chatgpt-codex.<domain>` when they are available.
+
+不要要求用户选择操作系统、访问方案、本地端口或子域名，除非用户明确要覆盖默认值。自动识别系统，默认端口 `8766`；没有 Cloudflare 登录/域名时使用临时 HTTPS 隧道，两者具备时使用 `https://chatgpt-codex.<domain>`。
 
 Never ask for ChatGPT passwords, browser cookies, OpenAI API keys, or unrelated secrets.
 
@@ -73,7 +69,7 @@ macOS：
 chatgpt-codex route-options
 chatgpt-codex authorize \
   --workspace "$WORKSPACE" \
-  --operating-system "$OPERATING_SYSTEM" \
+  --operating-system auto \
   --access-plan "$ACCESS_PLAN" \
   --public-base-url "$PUBLIC_BASE_URL" \
   --allow-browser-automation \

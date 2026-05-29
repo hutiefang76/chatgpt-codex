@@ -15,18 +15,16 @@ The primary agent entry is the bundled skill:
 ```text
 Please use the chatgpt-codex skill in this repository to set up my ChatGPT local coding bridge.
 
-Ask me for the required inputs first:
-- operating system, macOS or Windows
+Ask me only for the minimal human inputs:
+- confirm I am logged into ChatGPT in Chrome
 - workspace path
-- access plan: local-only test, built-in quick tunnel, custom domain, or existing HTTPS route
-- local port, default 8766
-- whether my ChatGPT account can create Custom GPTs with Actions
-- permission to open Chrome and automate ChatGPT Builder after I log in manually
-- permission to start local background services
-- permission to install helper tools when the chosen access plan requires them
-- custom domain or HTTPS routing details if needed
+- optional: confirm I am logged into Cloudflare in Chrome
+- optional: Cloudflare-managed domain
+- local authorization for you to detect the OS, choose the route, install needed helpers, start services, open Chrome, configure Builder after human login, write the workspace, and execute commands inside the workspace
 
-Then install, configure, start, verify, and give me the exact ChatGPT Builder fields.
+Use a temporary HTTPS tunnel when I do not provide Cloudflare login plus a domain. Use the fixed hostname chatgpt-codex.<domain> when both are available.
+
+Then install, configure, start, verify, and give me the exact ChatGPT Builder fields. Do not ask me to choose the OS, access plan, port, or subdomain unless I explicitly override defaults.
 
 Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelated secrets.
 ```
@@ -34,26 +32,24 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 ```text
 请使用本仓库里的 chatgpt-codex skill，把这个仓库配置成我的 ChatGPT 本地编程桥。
 
-先问我必要信息：
-- 操作系统：macOS 或 Windows
+只问我真人必须提供的最小信息：
+- 确认我已在 Chrome 登录 ChatGPT
 - workspace 路径
-- 访问方案：仅本地测试、内置临时隧道、自定义域名，或已有 HTTPS 入口
-- 本地端口，默认 8766
-- 我的 ChatGPT 账号是否能创建带 Actions 的 Custom GPT
-- 是否允许打开 Chrome，并在我手动登录后自动配置 ChatGPT Builder
-- 是否允许启动本地后台服务
-- 当所选入口方案需要辅助工具时，是否允许自动安装
-- 如需要，询问自定义域名或 HTTPS 路由信息
+- 可选：确认我已在 Chrome 登录 Cloudflare
+- 可选：Cloudflare 管理的域名
+- 本地授权：允许你自动识别系统、选择入口方案、安装必要辅助工具、启动服务、打开 Chrome、在真人登录后配置 Builder、写入 workspace，并在 workspace 内执行命令
 
-然后完成安装、配置、启动、验证，并给我可直接填写到 ChatGPT Builder 的字段。
+如果我没有同时提供 Cloudflare 登录和域名，使用临时 HTTPS 隧道。如果两者都具备，使用固定域名 chatgpt-codex.<domain>。
+
+然后完成安装、配置、启动、验证，并给我可直接填写到 ChatGPT Builder 的字段。除非我明确要覆盖默认值，不要问我选择操作系统、访问方案、端口或子域名。
 
 不要索要我的 ChatGPT 密码、浏览器 cookie、OpenAI API key 或无关密钥。
 ```
 
 ## Agent Checklist / Agent 检查清单
 
-- Collect required inputs before changing local state.
-- 修改本地状态前先收集必要信息。
+- Collect only the minimal human inputs before changing local state.
+- 修改本地状态前只收集真人必须提供的最小信息。
 - Run `./scripts/install.sh` on macOS or `.\scripts\install.ps1` on Windows PowerShell.
 - macOS 运行 `./scripts/install.sh`；Windows PowerShell 运行 `.\scripts\install.ps1`。
 - Run `chatgpt-codex init`.
@@ -66,8 +62,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 运行 `chatgpt-codex doctor`。
 - Start `chatgpt-codex serve`.
 - 启动 `chatgpt-codex serve`。
-- Start the built-in tunnel only if the user chose that route.
-- 仅在用户选择内置隧道方案时启动 tunnel。
+- Use a temporary HTTPS tunnel when no Cloudflare login/domain are provided; use `chatgpt-codex.<domain>` when both are provided.
+- 没有 Cloudflare 登录/域名时使用临时 HTTPS 隧道；两者都提供时使用 `chatgpt-codex.<domain>`。
 - Open ChatGPT Builder with `chatgpt-codex open-chatgpt` only after browser automation is approved and the user has logged in manually.
 - 只有在用户授权浏览器自动化并手动登录后，才用 `chatgpt-codex open-chatgpt` 打开 ChatGPT Builder。
 - Verify `/health`, `/openapi.json`, and one authenticated read-only action.

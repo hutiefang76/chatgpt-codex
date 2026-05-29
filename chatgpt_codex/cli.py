@@ -339,8 +339,8 @@ skills/chatgpt-codex/SKILL.md
 然后让它完成本地 ChatGPT Actions 配置。
 
 Agent mission / Agent 任务：
-1. Ask the user for the required inputs.
-   向用户询问必要信息。
+1. Ask only for the minimal human inputs.
+   只向用户询问真人必须提供的最小信息。
 2. Install the local launcher.
    安装本地启动器。
 3. Save setup choices and permissions in .chatgpt-codex/permissions.json.
@@ -357,15 +357,23 @@ Agent mission / Agent 任务：
    打印或填写 ChatGPT Builder 字段。
 
 Required user inputs / 需要用户提供：
-- workspace path / workspace 路径
-- operating system: macOS or Windows / 操作系统：macOS 或 Windows
-- access plan: local-only test, built-in quick tunnel, custom domain, or existing HTTPS route / 访问方案：仅本地测试、内置临时隧道、自定义域名，或已有 HTTPS 入口
-- local port, default 8766 / 本地端口，默认 8766
-- confirmation that their ChatGPT account can create Custom GPT Actions / 确认 ChatGPT 账号能创建带 Actions 的 Custom GPT
-- permission to open Chrome and automate ChatGPT Builder after manual login / 是否允许打开 Chrome，并在用户手动登录后自动配置 ChatGPT Builder
-- permission to start local background services / 授权启动本地后台服务
-- permission to install helper tools when the chosen access plan requires them / 当所选入口方案需要辅助工具时，是否允许自动安装
-- custom domain or HTTPS routing details if needed / 如需要，提供自定义域名或 HTTPS 路由信息
+- Chrome human login to ChatGPT: required / Chrome 真人登录 ChatGPT：必须
+- workspace path: required / workspace 路径：必须
+- Chrome human login to Cloudflare: optional / Chrome 真人登录 Cloudflare：可选
+- Cloudflare-managed domain: optional / Cloudflare 管理的域名：可选
+- local authorization for OS detection, route selection, helper install, service start, Chrome opening, Builder configuration after human login, workspace writes, and workspace command execution / 本地授权：允许自动识别系统、选择入口方案、安装辅助工具、启动服务、打开 Chrome、在真人登录后配置 Builder、写入 workspace、并在 workspace 内执行命令
+
+Defaults / 默认：
+- Detect macOS or Windows automatically and use port 8766 unless the user overrides it.
+  自动识别 macOS 或 Windows，默认端口 8766，除非用户明确覆盖。
+- If no Cloudflare login and domain are available, use a temporary HTTPS tunnel for ChatGPT web.
+  没有 Cloudflare 登录和域名时，使用临时 HTTPS 隧道供 ChatGPT 网页端访问。
+- If both are available, use the fixed hostname https://chatgpt-codex.<domain>.
+  两者都具备时，使用固定域名 https://chatgpt-codex.<domain>。
+- Use local-only only for tests or explicit user requests.
+  仅在测试或用户明确要求时使用仅本地模式。
+- The ChatGPT account must support Actions, and the GPT should be saved private unless the user intentionally shares access.
+  ChatGPT 账号必须支持 Actions；除非用户明确要共享访问，否则 GPT 应保存为私有。
 
 Do not ask for / 不要索要：
 - ChatGPT password / ChatGPT 密码
@@ -380,7 +388,7 @@ Suggested command sequence on macOS / macOS 建议命令序列：
 chatgpt-codex route-options
 chatgpt-codex authorize \\
   --workspace "$WORKSPACE" \\
-  --operating-system macos \\
+  --operating-system auto \\
   --access-plan "$ACCESS_PLAN" \\
   --public-base-url "$PUBLIC_BASE_URL" \\
   --allow-browser-automation \\

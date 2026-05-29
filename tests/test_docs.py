@@ -67,11 +67,34 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("Windows PowerShell", readme)
         self.assertIn(".\\.venv\\Scripts\\Activate.ps1", readme)
         self.assertIn("py -3 -m unittest discover -s tests", readme)
-        self.assertIn("operating system: macOS or Windows", skill)
+        self.assertIn("Chrome human login to ChatGPT", skill)
+        self.assertIn("chatgpt-codex.<domain>", skill)
+        self.assertIn("Do not ask the user to choose an operating system", skill)
         self.assertIn("chatgpt-codex authorize", readme)
         self.assertIn(".chatgpt-codex/permissions.json", readme)
         self.assertIn("chatgpt-codex open-chatgpt", readme)
         self.assertIn("built-in-quick-tunnel", skill)
+
+    def test_docs_define_minimal_human_inputs_consistently(self):
+        root = Path(__file__).resolve().parents[1]
+        files = [
+            root / "README.md",
+            root / "AGENTS.md",
+            root / "CLAUDE.md",
+            root / "docs" / "AI_NATIVE.md",
+            root / "skills" / "chatgpt-codex" / "SKILL.md",
+            root / "skills" / "chatgpt-codex" / "references" / "agent-handoff.md",
+        ]
+
+        for path in files:
+            content = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.name):
+                self.assertIn("Chrome", content)
+                self.assertIn("ChatGPT", content)
+                self.assertIn("workspace", content)
+                self.assertIn("Cloudflare", content)
+                self.assertIn("chatgpt-codex.<domain>", content)
+                self.assertIn("temporary HTTPS tunnel", content)
 
     def test_root_permissions_template_and_helpers_exist(self):
         root = Path(__file__).resolve().parents[1]

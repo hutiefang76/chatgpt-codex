@@ -1,6 +1,6 @@
 ---
 name: chatgpt-codex
-description: Set up and verify this repository as a ChatGPT local coding bridge. Use when the user asks Codex, Claude, or another AI agent to install ChatGPT Codex, ask for required setup inputs, configure a workspace, start the local server, set up or use a public HTTPS route, verify ChatGPT Actions endpoints, or produce the final ChatGPT Builder fields.
+description: Set up and verify this repository as a ChatGPT local coding bridge. Use when the user asks Codex, Claude, or another AI agent to install ChatGPT Codex, collect minimal human inputs, configure a workspace, start the local server, set up or use a public HTTPS route, verify ChatGPT Actions endpoints, or produce the final ChatGPT Builder fields.
 ---
 
 # ChatGPT Codex
@@ -11,7 +11,7 @@ Use this skill to turn this repository into a working local coding bridge for Ch
 
 ## Workflow / 流程
 
-1. Ask the user for required inputs before changing local state.
+1. Ask only for the minimal human inputs before changing local state.
 2. Install the local launcher.
 3. Save setup permissions in `.chatgpt-codex/permissions.json`.
 4. Create config for the target workspace.
@@ -22,7 +22,7 @@ Use this skill to turn this repository into a working local coding bridge for Ch
 
 中文：
 
-1. 修改本地状态前，先向用户询问必要信息。
+1. 修改本地状态前，只向用户询问真人必须提供的最小信息。
 2. 安装本地启动器。
 3. 将配置授权保存到 `.chatgpt-codex/permissions.json`。
 4. 为目标 workspace 创建配置。
@@ -41,15 +41,33 @@ Ask for:
 
 询问：
 
-- workspace path / workspace 路径
-- operating system: macOS or Windows / 操作系统：macOS 或 Windows
-- access plan: local-only test, built-in quick tunnel, custom domain, or existing HTTPS route / 访问方案：仅本地测试、内置临时隧道、自定义域名，或已有 HTTPS 入口
-- local port, default `8766` / 本地端口，默认 `8766`
-- confirmation that the ChatGPT account can create Custom GPTs with Actions / 确认 ChatGPT 账号能创建带 Actions 的 Custom GPT
-- permission to open Chrome and automate ChatGPT Builder after manual login / 是否允许打开 Chrome，并在用户手动登录后自动配置 ChatGPT Builder
-- permission to start local background services / 是否允许启动本地后台服务
-- permission to install helper tools when the chosen access plan requires them / 当所选入口方案需要辅助工具时，是否允许自动安装
-- custom hostname or HTTPS routing details if needed / 如需要，询问自定义域名或 HTTPS 路由信息
+- Chrome human login to ChatGPT: required. The user logs in manually; the agent only operates after login.
+- Chrome 真人登录 ChatGPT：必须。用户手动登录；agent 只在登录后操作。
+- Workspace path: required, for example `/Users/me/project/demo`.
+- Workspace 路径：必须，例如 `/Users/me/project/demo`。
+- Chrome human login to Cloudflare: optional, only for a stable Cloudflare-managed hostname.
+- Chrome 真人登录 Cloudflare：可选，仅在需要稳定的 Cloudflare 托管域名时使用。
+- Cloudflare-managed domain: optional. When provided, always use the fixed hostname `chatgpt-codex.<domain>`, for example `chatgpt-codex.hutiefang.net`.
+- Cloudflare 管理的域名：可选。提供时固定使用 `chatgpt-codex.<domain>`，例如 `chatgpt-codex.hutiefang.net`。
+- Local authorization: required. Confirm the agent may detect the OS, choose the route, install needed helpers, start local services, open Chrome, configure ChatGPT Builder after human login, write the workspace, and execute commands inside the workspace.
+- 本地授权：必须。确认 agent 可以自动识别系统、选择入口方案、安装必要辅助工具、启动本地服务、打开 Chrome、在真人登录后配置 ChatGPT Builder、写入 workspace，并在 workspace 内执行命令。
+
+Do not ask the user to choose an operating system, access plan, local port, or subdomain unless they explicitly want to override defaults. Detect the OS, use port `8766`, and choose the route automatically.
+
+不要要求用户选择操作系统、访问方案、本地端口或子域名，除非用户明确要覆盖默认值。自动识别系统，默认使用端口 `8766`，并自动选择入口方案。
+
+Route defaults:
+
+入口默认规则：
+
+- If no Cloudflare login and domain are available, use a temporary HTTPS tunnel for ChatGPT web.
+- 如果没有 Cloudflare 登录和域名，使用临时 HTTPS 隧道供 ChatGPT 网页端访问。
+- If Cloudflare login and a managed domain are available, configure the stable hostname `chatgpt-codex.<domain>`.
+- 如果已登录 Cloudflare 且有托管域名，配置稳定域名 `chatgpt-codex.<domain>`。
+- Use local-only only for tests or explicit user requests.
+- 仅在测试或用户明确要求时使用仅本地模式。
+- The ChatGPT account must support GPT Actions to create or configure the GPT. Save it private unless the user intentionally shares access.
+- ChatGPT 账号必须支持 GPT Actions 才能创建或配置 GPT。除非用户明确要共享访问，否则保存为私有。
 
 Never ask for ChatGPT passwords, browser cookies, OpenAI API keys, or unrelated secrets.
 
@@ -96,7 +114,7 @@ Configure:
 chatgpt-codex route-options
 chatgpt-codex authorize \
   --workspace "$WORKSPACE" \
-  --operating-system "$OPERATING_SYSTEM" \
+  --operating-system auto \
   --access-plan "$ACCESS_PLAN" \
   --public-base-url "$PUBLIC_BASE_URL" \
   --allow-browser-automation \
@@ -134,6 +152,17 @@ Access plan rules:
 - `custom-domain`：需要公网 HTTPS，需要域名；只有用户选择的路由方式需要时才需要 `cloudflared`。
 - `existing-https-route`: public HTTPS required, no `cloudflared` or new domain required.
 - `existing-https-route`：需要公网 HTTPS；不需要 `cloudflared` 或新域名。
+
+Agent route selection:
+
+Agent 入口选择：
+
+- Set `ACCESS_PLAN=built-in-quick-tunnel` when the user did not provide Cloudflare login plus a managed domain.
+- 当用户没有提供 Cloudflare 登录和托管域名时，设置 `ACCESS_PLAN=built-in-quick-tunnel`。
+- Set `ACCESS_PLAN=custom-domain` when both are available, and set `PUBLIC_BASE_URL=https://chatgpt-codex.<domain>`.
+- 当两者都具备时，设置 `ACCESS_PLAN=custom-domain`，并设置 `PUBLIC_BASE_URL=https://chatgpt-codex.<domain>`。
+- Set `ACCESS_PLAN=local-only` only for local tests or explicit user requests.
+- 仅在本地测试或用户明确要求时设置 `ACCESS_PLAN=local-only`。
 
 Start the local server:
 

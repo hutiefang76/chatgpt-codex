@@ -35,8 +35,8 @@ The local server runs with only the Python standard library. ChatGPT web cannot 
 - 本地系统授权该工具读写你配置的工作区。
 - Optional: `cloudflared`, only for the built-in `chatgpt-codex tunnel` command.
 - 可选：`cloudflared`，仅用于内置的 `chatgpt-codex tunnel` 命令。
-- Optional but recommended: a domain you control, such as `actions.example.com`.
-- 可选但推荐：一个你控制的域名，例如 `actions.example.com`。
+- Optional: a Cloudflare-managed domain if you want a stable hostname such as `chatgpt-codex.example.com`.
+- 可选：如果你想使用 `chatgpt-codex.example.com` 这类稳定域名，需要一个由 Cloudflare 管理的域名。
 
 ## Quick Start / 快速开始
 
@@ -68,9 +68,24 @@ Or point the agent to:
 - [CLAUDE.md](./CLAUDE.md)
 - [docs/AI_NATIVE.md](./docs/AI_NATIVE.md)
 
-The agent should ask for the operating system, workspace path, HTTPS plan, local port, ChatGPT Builder capability, permission to open Chrome after manual login, permission to start local services, and permission to install helper tools if the chosen route needs them. After that, it can install, configure, start, verify, and print or apply the exact Builder fields.
+Minimal human inputs:
 
-Agent 会读取 skill，询问操作系统、workspace 路径、HTTPS 方案、本地端口、ChatGPT Builder 能力、是否允许用户手动登录后打开 Chrome、是否允许启动本地服务，以及当所选入口需要辅助工具时是否允许自动安装。之后它可以自动安装、配置、启动、验证，并打印或填写可用于 Builder 的字段。
+真人最小输入：
+
+- Chrome human login to ChatGPT is required. The agent must not ask for ChatGPT passwords, cookies, sessions, or API keys.
+- 真人必须先在 Chrome 登录 ChatGPT。Agent 不得索要 ChatGPT 密码、cookie、会话或 API key。
+- Workspace path is required, for example `/Users/me/project/demo`.
+- 必须提供 workspace 路径，例如 `/Users/me/project/demo`。
+- Chrome human login to Cloudflare is optional, only for a stable Cloudflare-managed custom hostname.
+- Chrome 登录 Cloudflare 是可选项，仅在需要稳定的 Cloudflare 托管自定义域名时使用。
+- A Cloudflare-managed domain is optional. If provided, the fixed hostname is `chatgpt-codex.<domain>`, for example `chatgpt-codex.hutiefang.net`.
+- Cloudflare 管理的域名是可选项。如果提供，固定子域名为 `chatgpt-codex.<domain>`，例如 `chatgpt-codex.hutiefang.net`。
+- One local authorization is required: allow the agent to detect the OS, choose the route, install needed helpers, start the service, open Chrome, configure Builder after human login, write the workspace, and execute commands inside the workspace.
+- 需要一条本地授权：允许 agent 自动识别系统、选择入口方案、安装必要辅助工具、启动服务、打开 Chrome、在真人登录后配置 Builder、写入 workspace，并在 workspace 内执行命令。
+
+Defaults: if no Cloudflare login and domain are provided, the agent uses a temporary HTTPS tunnel for ChatGPT web. If both are available, the agent may configure the stable hostname `chatgpt-codex.<domain>`. Local-only mode is for tests or explicit user requests. The account used to create the GPT must support Actions, and the GPT should be saved private unless the user intentionally shares access.
+
+默认行为：如果没有 Cloudflare 登录和域名，agent 使用临时 HTTPS 隧道供 ChatGPT 网页端访问。如果两者都具备，agent 可以配置稳定域名 `chatgpt-codex.<domain>`。仅本地模式只用于测试或用户明确要求。创建 GPT 的账号必须支持 Actions，除非用户明确要共享访问，否则 GPT 应保存为私有。
 
 Save the user's setup choices and permissions in the project root before automation:
 
@@ -103,9 +118,9 @@ The helper scripts only copy the template. Edit the copied file, or run `chatgpt
 ```bash
 chatgpt-codex authorize \
   --workspace /absolute/path/to/your/project \
-  --operating-system macos \
+  --operating-system auto \
   --access-plan built-in-quick-tunnel \
-  --public-base-url https://actions.example.com \
+  --public-base-url https://temporary-or-stable-url.example.com \
   --allow-browser-automation \
   --allow-start-services \
   --allow-install-helpers \
@@ -120,9 +135,9 @@ Windows PowerShell：
 ```powershell
 chatgpt-codex authorize `
   --workspace "C:\absolute\path\to\your\project" `
-  --operating-system windows `
+  --operating-system auto `
   --access-plan built-in-quick-tunnel `
-  --public-base-url https://actions.example.com `
+  --public-base-url https://temporary-or-stable-url.example.com `
   --allow-browser-automation `
   --allow-start-services `
   --allow-install-helpers `
@@ -189,7 +204,7 @@ macOS 终端：
 . .venv/bin/activate
 chatgpt-codex init \
   --workspace /absolute/path/to/your/project \
-  --public-base-url https://actions.example.com
+  --public-base-url https://chatgpt-codex.example.com
 ```
 
 Windows PowerShell:
@@ -200,7 +215,7 @@ Windows PowerShell：
 . .\.venv\Scripts\Activate.ps1
 chatgpt-codex init `
   --workspace "C:\absolute\path\to\your\project" `
-  --public-base-url https://actions.example.com
+  --public-base-url https://chatgpt-codex.example.com
 ```
 
 If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process Bypass -Force` in that terminal and retry activation.
@@ -249,9 +264,9 @@ For a stable custom domain with the built-in tunnel approach, point the public r
 http://127.0.0.1:8766
 ```
 
-Then set `public_base_url` in `.chatgpt-codex/config.json` to your HTTPS domain, for example:
+Then set `public_base_url` in `.chatgpt-codex/config.json` to your HTTPS route. With a Cloudflare-managed domain, use the fixed hostname `chatgpt-codex.<domain>`, for example:
 
-然后把 `.chatgpt-codex/config.json` 里的 `public_base_url` 改成你的 HTTPS 域名，例如：
+然后把 `.chatgpt-codex/config.json` 里的 `public_base_url` 改成你的 HTTPS 入口。如果使用 Cloudflare 管理的域名，固定使用 `chatgpt-codex.<domain>`，例如：
 
 ```json
 {
@@ -259,7 +274,7 @@ Then set `public_base_url` in `.chatgpt-codex/config.json` to your HTTPS domain,
   "token": "keep-this-secret",
   "host": "127.0.0.1",
   "port": 8766,
-  "public_base_url": "https://actions.example.com"
+  "public_base_url": "https://chatgpt-codex.hutiefang.net"
 }
 ```
 

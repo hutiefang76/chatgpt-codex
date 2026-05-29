@@ -97,6 +97,8 @@ class CliTests(unittest.TestCase):
                 self.assertIn("Codex or Claude", output)
                 self.assertIn("skills/chatgpt-codex/SKILL.md", output)
                 self.assertIn("workspace path", output)
+                self.assertIn("Chrome human login to ChatGPT", output)
+                self.assertIn("chatgpt-codex.<domain>", output)
                 self.assertIn("public HTTPS", output)
                 self.assertIn("ChatGPT Builder", output)
 

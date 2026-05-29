@@ -4,6 +4,6 @@ Use [skills/chatgpt-codex/SKILL.md](./skills/chatgpt-codex/SKILL.md), then follo
 
 请优先使用 [skills/chatgpt-codex/SKILL.md](./skills/chatgpt-codex/SKILL.md)，需要更多仓库级上下文时再参考 [AGENTS.md](./AGENTS.md)。
 
-This repository is designed so Claude can ask the user for the required setup inputs, choose the macOS or Windows command path, save local setup permissions, verify the service, and hand back or apply the exact ChatGPT Builder fields after the user logs into ChatGPT manually.
+This repository is designed so Claude asks only for the minimal human inputs: Chrome login to ChatGPT, workspace path, optional Chrome login to Cloudflare, optional Cloudflare-managed domain, and local authorization. Claude then detects macOS or Windows, chooses a temporary HTTPS tunnel by default, uses `chatgpt-codex.<domain>` when Cloudflare login and domain are available, saves local setup permissions, verifies the service, and hands back or applies the exact ChatGPT Builder fields after the user logs into ChatGPT manually.
 
-本仓库设计目标是让 Claude 能先向用户索要必要配置，随后选择 macOS 或 Windows 命令路径、保存本地配置授权、验证服务，并在用户手动登录 ChatGPT 后交付或填写可用于 ChatGPT Builder 的字段。
+本仓库设计目标是让 Claude 只向用户索要真人必须提供的最小信息：Chrome 登录 ChatGPT、workspace 路径、可选的 Chrome 登录 Cloudflare、可选的 Cloudflare 管理域名，以及本地授权。随后 Claude 自动识别 macOS 或 Windows、默认选择临时 HTTPS 隧道、在 Cloudflare 登录和域名都具备时使用 `chatgpt-codex.<domain>`、保存本地配置授权、验证服务，并在用户手动登录 ChatGPT 后交付或填写可用于 ChatGPT Builder 的字段。
