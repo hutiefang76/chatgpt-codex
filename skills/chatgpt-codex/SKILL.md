@@ -35,6 +35,29 @@ For a copyable user prompt and detailed checklist, read `references/agent-handof
 
 如需可复制提示词和详细检查清单，读取 `references/agent-handoff.md`。
 
+## Closed Loop / 功能闭环
+
+The setup is complete only when all of these are true:
+
+只有全部满足时才算完成：
+
+- minimal human inputs and local authorization are recorded;
+- 已记录真人最小输入和本地授权；
+- `.chatgpt-codex/config.json` exists with `workspaces` and `active_workspace`;
+- `.chatgpt-codex/config.json` 已存在，并包含 `workspaces` 和 `active_workspace`；
+- `chatgpt-codex status` is readable by the agent;
+- agent 可以读取 `chatgpt-codex status`；
+- local server is running;
+- 本地服务已运行；
+- final public URL is saved with `chatgpt-codex set-public-url`;
+- 最终公网 URL 已用 `chatgpt-codex set-public-url` 保存；
+- `chatgpt-codex verify` passes;
+- `chatgpt-codex verify` 通过；
+- ChatGPT Builder has the current schema URL and bearer token;
+- ChatGPT Builder 已配置当前 schema URL 和 bearer token；
+- GPT chat can show and switch the active workspace using Actions.
+- GPT 对话可以通过 Actions 显示并切换当前工作区。
+
 ## Required Inputs / 必要信息
 
 Ask for:
@@ -96,6 +119,10 @@ AI-native 管理：
 - 先运行 `chatgpt-codex status` 读取机器可读的本地状态。
 - Use `chatgpt-codex ai-commands` to discover the local command catalog.
 - 用 `chatgpt-codex ai-commands` 获取本地命令目录。
+- Use `chatgpt-codex set-public-url <url>` after a tunnel or custom route gives the final public URL.
+- 隧道或自定义入口给出最终公网 URL 后，用 `chatgpt-codex set-public-url <url>` 保存。
+- Use `chatgpt-codex verify` for the final health/schema/read-only action check.
+- 用 `chatgpt-codex verify` 做最终健康检查、schema 和只读 Action 验证。
 - `status` reports whether a token exists but never prints the bearer token itself.
 - `status` 只报告 token 是否存在，不打印 bearer token 原文。
 
@@ -204,6 +231,15 @@ If the user chooses the built-in quick tunnel:
 chatgpt-codex tunnel
 ```
 
+After the public URL is known:
+
+拿到公网 URL 后：
+
+```bash
+chatgpt-codex set-public-url "$PUBLIC_BASE_URL"
+chatgpt-codex verify
+```
+
 If the user approved browser automation and is logged into ChatGPT in Chrome:
 
 如果用户已授权浏览器自动化，并且已在 Chrome 登录 ChatGPT：
@@ -237,6 +273,14 @@ GPT 对话中的项目切换流程：
 Before saying setup is complete, verify. For local-only testing, use the local server URL. For ChatGPT web use, use the public HTTPS URL.
 
 确认完成前，必须验证。仅本地测试时使用本地服务地址；ChatGPT 网页端真实使用时使用公网 HTTPS 地址。
+
+Preferred AI-native verification:
+
+优先使用 AI-native 验证：
+
+```bash
+chatgpt-codex verify
+```
 
 ```bash
 curl --noproxy '*' "$PUBLIC_BASE_URL/health"

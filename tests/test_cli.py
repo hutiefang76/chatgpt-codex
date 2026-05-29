@@ -3,11 +3,13 @@ import io
 import json
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
 from chatgpt_codex.cli import main
 from chatgpt_codex.config import AppConfig, load_config, load_permissions
+from chatgpt_codex.server import create_server
 
 
 def run_quietly(args):
@@ -189,7 +191,56 @@ class CliTests(unittest.TestCase):
         self.assertIn("setup", catalog)
         self.assertIn("workspace", catalog)
         self.assertIn("chatgpt-codex status", catalog["inspect"])
+        self.assertIn("chatgpt-codex set-public-url <url>", catalog["routing"])
+        self.assertIn("chatgpt-codex verify", catalog["inspect"])
         self.assertIn("chatgpt-codex token", catalog["chatgpt_builder"])
+
+    def test_set_public_url_preserves_token_and_workspaces(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            run_quietly(["--config", str(config_path), "init", "--workspace", str(workspace), "--workspace-name", "demo"])
+            before = load_config(config_path)
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "set-public-url", "https://new.example.com/"])
+
+            after = load_config(config_path)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(payload["public_base_url"], "https://new.example.com")
+            self.assertEqual(after.token, before.token)
+            self.assertEqual(after.workspaces, before.workspaces)
+
+    def test_verify_checks_health_schema_and_read_only_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            (workspace / "hello.txt").write_text("hello", encoding="utf-8")
+            run_quietly(["--config", str(config_path), "init", "--workspace", str(workspace), "--workspace-name", "demo"])
+            config = load_config(config_path)
+            config.port = 0
+            server = create_server(config, config_path)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_port}"
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout):
+                    exit_code = main(["--config", str(config_path), "verify", "--base-url", base_url])
+
+                result = json.loads(stdout.getvalue())
+                self.assertEqual(exit_code, 0)
+                self.assertTrue(result["ok"])
+                self.assertEqual(len(result["checks"]), 3)
+                self.assertTrue(all(check["ok"] for check in result["checks"]))
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
 
     def test_ai_native_alias_prints_agent_handoff(self):
         for command in ["agent-brief", "ai-native", "skills", "skill"]:

@@ -75,6 +75,10 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("chatgpt-codex open-chatgpt", readme)
         self.assertIn("chatgpt-codex workspace add", readme)
         self.assertIn("switch_workspace", readme)
+        self.assertIn("chatgpt-codex set-public-url", readme)
+        self.assertIn("chatgpt-codex verify", readme)
+        self.assertIn("Closed-loop product flow", readme)
+        self.assertIn("Closed Loop", skill)
         self.assertIn("built-in-quick-tunnel", skill)
 
     def test_docs_define_minimal_human_inputs_consistently(self):

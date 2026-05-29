@@ -175,6 +175,8 @@ Agent 应优先使用机器可读命令：
 ```bash
 chatgpt-codex status
 chatgpt-codex ai-commands
+chatgpt-codex set-public-url https://your-current-public-url
+chatgpt-codex verify
 ```
 
 `status` reports config paths, active workspace, registered workspaces, local/public URLs, helper availability, and whether a token is configured. It never prints the bearer token itself.
@@ -184,6 +186,36 @@ chatgpt-codex ai-commands
 `ai-commands` prints the local command catalog for setup, inspection, workspace switching, Builder fields, and runtime.
 
 `ai-commands` 会打印本地命令目录，覆盖配置、检查、工作区切换、Builder 字段和运行时。
+
+When a temporary tunnel prints a new public URL, save it with `set-public-url` so OpenAPI and Builder fields stay aligned. Use `verify` after the server and public route are running.
+
+临时隧道输出新的公网 URL 后，用 `set-public-url` 保存，确保 OpenAPI 和 Builder 字段一致。服务和公网入口启动后，用 `verify` 做闭环检查。
+
+Closed-loop product flow:
+
+产品闭环流程：
+
+1. Collect minimal human inputs and local authorization.
+2. Install and create `.chatgpt-codex/config.json`.
+3. Register authorized workspaces and select `active_workspace`.
+4. Start the local server.
+5. Start or provide a public HTTPS route.
+6. Save the final public URL with `set-public-url`.
+7. Run `verify`.
+8. Configure ChatGPT Builder with `gpt-instructions`, `openapi.json`, and `token`.
+9. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
+
+中文：
+
+1. 收集真人最小输入和本地授权。
+2. 安装并创建 `.chatgpt-codex/config.json`。
+3. 登记已授权工作区并选择 `active_workspace`。
+4. 启动本地服务。
+5. 启动或提供公网 HTTPS 入口。
+6. 用 `set-public-url` 保存最终公网 URL。
+7. 运行 `verify`。
+8. 用 `gpt-instructions`、`openapi.json` 和 `token` 配置 ChatGPT Builder。
+9. 在 GPT 对话里，文件或命令操作前使用 `workspace_status`、`list_workspaces` 和 `switch_workspace`。
 
 ### Manual Setup / 手动配置
 
@@ -287,6 +319,15 @@ chatgpt-codex tunnel
 If you already have your own HTTPS route, point it at the local server instead.
 
 如果你已经有自己的 HTTPS 入口，把它指向本地服务即可。
+
+After the public URL is known:
+
+拿到公网 URL 后：
+
+```bash
+chatgpt-codex set-public-url https://your-current-public-url
+chatgpt-codex verify
+```
 
 Route choices:
 

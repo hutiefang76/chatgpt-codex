@@ -6,6 +6,8 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import ProxyHandler, Request, build_opener
 
 from .config import (
     ACCESS_PLANS,
@@ -45,6 +47,11 @@ def main(argv=None) -> int:
     subcommands.add_parser("openapi", help="Print the OpenAPI document. / 打印 OpenAPI 文档。")
     subcommands.add_parser("gpt-instructions", help="Print Custom GPT setup instructions. / 打印 Custom GPT 配置说明。")
     subcommands.add_parser("route-options", help="Explain HTTPS route choices. / 说明 HTTPS 入口选项。")
+    public_url_parser = subcommands.add_parser("set-public-url", help="Update public_base_url without changing token or workspaces. / 只更新 public_base_url，不改变 token 或工作区。")
+    public_url_parser.add_argument("url", help="Public HTTPS base URL. / 公网 HTTPS 根地址。")
+    verify_parser = subcommands.add_parser("verify", help="Verify health, schema, and one authenticated read-only action. / 验证健康检查、schema 和一个带鉴权只读 Action。")
+    verify_parser.add_argument("--base-url", default="", help="Override base URL for verification. / 覆盖验证用根地址。")
+    verify_parser.add_argument("--timeout", type=int, default=10, help="Request timeout seconds. / 请求超时秒数。")
     subcommands.add_parser("permissions", help="Print saved setup permissions. / 打印已保存的配置授权。")
     template_parser = subcommands.add_parser("permissions-template", help="Print or write a permissions template. / 打印或写入授权模板。")
     template_parser.add_argument("--output", default="", help="Optional output path. / 可选输出路径。")
@@ -181,6 +188,15 @@ def main(argv=None) -> int:
     if args.command == "gpt-instructions":
         print(_gpt_instructions(config))
         return 0
+    if args.command == "set-public-url":
+        config.public_base_url = args.url.rstrip("/")
+        save_config(config, cfg_path, overwrite=True)
+        print(json.dumps({"public_base_url": config.public_base_url}, indent=2, ensure_ascii=False))
+        return 0
+    if args.command == "verify":
+        result = _verify_actions(config, args.base_url or config.public_base_url, args.timeout)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result["ok"] else 1
     if args.command == "workspace":
         return _workspace_command(args, config, cfg_path)
     if args.command == "serve":
@@ -281,9 +297,14 @@ def _ai_command_catalog() -> dict:
         "inspect": [
             "chatgpt-codex status",
             "chatgpt-codex doctor",
+            "chatgpt-codex verify",
+            "chatgpt-codex verify --base-url <url>",
             "chatgpt-codex route-options",
             "chatgpt-codex workspace status",
             "chatgpt-codex workspace list",
+        ],
+        "routing": [
+            "chatgpt-codex set-public-url <url>",
         ],
         "workspace": [
             "chatgpt-codex workspace add --name <name> --path <path>",
@@ -328,6 +349,58 @@ def _workspace_command(args, config: AppConfig, cfg_path: Path) -> int:
         print(json.dumps(status, indent=2, ensure_ascii=False))
         return 0
     return 2
+
+
+def _verify_actions(config: AppConfig, base_url: str, timeout: int) -> dict:
+    base = base_url.rstrip("/")
+    checks = [
+        _verify_get(f"{base}/health", timeout),
+        _verify_get(f"{base}/openapi.json", timeout),
+        _verify_post(
+            f"{base}/list_files",
+            {"path": ".", "recursive": False, "max_results": 20},
+            config.token,
+            timeout,
+        ),
+    ]
+    return {
+        "ok": all(check["ok"] for check in checks),
+        "base_url": base,
+        "active_workspace": config.active_workspace,
+        "workspace": str(config.workspace),
+        "checks": checks,
+    }
+
+
+def _verify_get(url: str, timeout: int) -> dict:
+    return _verify_request(Request(url, method="GET"), timeout, url)
+
+
+def _verify_post(url: str, body: dict, token: str, timeout: int) -> dict:
+    payload = json.dumps(body).encode("utf-8")
+    request = Request(
+        url,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+    )
+    return _verify_request(request, timeout, url)
+
+
+def _verify_request(request: Request, timeout: int, url: str) -> dict:
+    opener = build_opener(ProxyHandler({}))
+    try:
+        response = opener.open(request, timeout=max(1, int(timeout or 10)))
+        content = response.read(4096).decode("utf-8", errors="replace")
+        return {"url": url, "ok": 200 <= response.status < 300, "status": response.status, "preview": content[:300]}
+    except HTTPError as exc:
+        content = exc.read(4096).decode("utf-8", errors="replace")
+        return {"url": url, "ok": False, "status": exc.code, "error": content[:300]}
+    except (OSError, URLError) as exc:
+        return {"url": url, "ok": False, "status": 0, "error": str(exc)}
 
 
 def _platform_label() -> str:

@@ -56,6 +56,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 运行 `chatgpt-codex init`。
 - Use `chatgpt-codex status` and `chatgpt-codex ai-commands` for machine-readable local management.
 - 使用 `chatgpt-codex status` 和 `chatgpt-codex ai-commands` 做机器可读的本地管理。
+- After a tunnel or route provides the final URL, run `chatgpt-codex set-public-url <url>`.
+- 隧道或入口给出最终 URL 后，运行 `chatgpt-codex set-public-url <url>`。
 - Add extra authorized projects with `chatgpt-codex workspace add --name <name> --path <path>`.
 - 用 `chatgpt-codex workspace add --name <name> --path <path>` 添加额外已授权项目。
 - Run `chatgpt-codex route-options` and `chatgpt-codex authorize` to save choices in `.chatgpt-codex/permissions.json`.
@@ -74,6 +76,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 确保 GPT Instructions 写明用 `workspace_status`、`list_workspaces` 和 `switch_workspace` 显示并切换当前本地目录。
 - Verify `/health`, `/openapi.json`, and one authenticated read-only action.
 - 验证 `/health`、`/openapi.json` 和一个带鉴权的只读 Action。
+- Prefer `chatgpt-codex verify` for machine-readable final verification.
+- 优先用 `chatgpt-codex verify` 做机器可读的最终验证。
 - Print `chatgpt-codex gpt-instructions`.
 - 打印 `chatgpt-codex gpt-instructions`。
 - Give the user the token privately for the Builder auth field.

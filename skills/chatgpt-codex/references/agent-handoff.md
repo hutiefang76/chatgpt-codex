@@ -56,6 +56,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 已启动本地服务。
 - Public HTTPS route available when ChatGPT web access is required.
 - 需要 ChatGPT 网页端访问时，公网 HTTPS 路由可用。
+- Final public URL saved with `chatgpt-codex set-public-url`.
+- 已用 `chatgpt-codex set-public-url` 保存最终公网 URL。
 - Temporary tunnel used by default; fixed hostname `chatgpt-codex.<domain>` used when Cloudflare login and domain are available.
 - 默认使用临时隧道；当 Cloudflare 登录和域名都具备时，使用固定域名 `chatgpt-codex.<domain>`。
 - `/health` works.
@@ -64,6 +66,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - `/openapi.json` 可访问。
 - Authenticated read-only Action works.
 - 带鉴权只读 Action 可用。
+- `chatgpt-codex verify` passes.
+- `chatgpt-codex verify` 通过。
 - Builder fields printed.
 - 已打印 Builder 字段。
 - GPT instructions include `workspace_status`, `list_workspaces`, and `switch_workspace`, and require showing the current local directory after each switch.
