@@ -54,6 +54,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - macOS 运行 `./scripts/install.sh`；Windows PowerShell 运行 `.\scripts\install.ps1`。
 - Run `chatgpt-codex init`.
 - 运行 `chatgpt-codex init`。
+- Use `chatgpt-codex status` and `chatgpt-codex ai-commands` for machine-readable local management.
+- 使用 `chatgpt-codex status` 和 `chatgpt-codex ai-commands` 做机器可读的本地管理。
 - Add extra authorized projects with `chatgpt-codex workspace add --name <name> --path <path>`.
 - 用 `chatgpt-codex workspace add --name <name> --path <path>` 添加额外已授权项目。
 - Run `chatgpt-codex route-options` and `chatgpt-codex authorize` to save choices in `.chatgpt-codex/permissions.json`.

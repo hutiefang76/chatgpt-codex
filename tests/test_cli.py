@@ -146,6 +146,51 @@ class CliTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             AppConfig.from_dict({"workspace": "/tmp/legacy", "token": "secret-token"})
 
+    def test_status_prints_machine_readable_state_without_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            run_quietly(
+                [
+                    "--config",
+                    str(config_path),
+                    "init",
+                    "--workspace",
+                    str(workspace),
+                    "--workspace-name",
+                    "demo",
+                    "--public-base-url",
+                    "https://actions.example.com",
+                ]
+            )
+            token = load_config(config_path).token
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "status"])
+
+            status = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(status["configured"])
+            self.assertTrue(status["token_configured"])
+            self.assertEqual(status["active_workspace"], "demo")
+            self.assertEqual(status["openapi_url"], "https://actions.example.com/openapi.json")
+            self.assertNotIn(token, stdout.getvalue())
+
+    def test_ai_commands_prints_machine_readable_command_catalog(self):
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            exit_code = main(["ai-commands"])
+
+        catalog = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertIn("setup", catalog)
+        self.assertIn("workspace", catalog)
+        self.assertIn("chatgpt-codex status", catalog["inspect"])
+        self.assertIn("chatgpt-codex token", catalog["chatgpt_builder"])
+
     def test_ai_native_alias_prints_agent_handoff(self):
         for command in ["agent-brief", "ai-native", "skills", "skill"]:
             with self.subTest(command=command):

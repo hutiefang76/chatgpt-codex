@@ -166,6 +166,25 @@ chatgpt-codex permissions-template
 chatgpt-codex permissions-template --output .chatgpt-codex/permissions.json
 ```
 
+### AI-Native CLI Management / AI-Native 本地命令管理
+
+Agents should use machine-readable commands first:
+
+Agent 应优先使用机器可读命令：
+
+```bash
+chatgpt-codex status
+chatgpt-codex ai-commands
+```
+
+`status` reports config paths, active workspace, registered workspaces, local/public URLs, helper availability, and whether a token is configured. It never prints the bearer token itself.
+
+`status` 会报告配置路径、当前工作区、已登记工作区、本地/公网 URL、辅助工具状态，以及 token 是否已配置。它不会打印 bearer token 原文。
+
+`ai-commands` prints the local command catalog for setup, inspection, workspace switching, Builder fields, and runtime.
+
+`ai-commands` 会打印本地命令目录，覆盖配置、检查、工作区切换、Builder 字段和运行时。
+
 ### Manual Setup / 手动配置
 
 macOS Terminal:

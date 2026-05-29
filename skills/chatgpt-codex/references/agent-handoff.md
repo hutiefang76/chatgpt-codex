@@ -48,6 +48,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 如果偏好手工编辑，已用对应操作系统辅助脚本复制根目录的 `permissions.example.json`。
 - Config created under `.chatgpt-codex/config.json`.
 - 已在 `.chatgpt-codex/config.json` 创建配置。
+- Machine-readable local state checked with `chatgpt-codex status` and command catalog checked with `chatgpt-codex ai-commands`.
+- 已用 `chatgpt-codex status` 检查机器可读本地状态，并用 `chatgpt-codex ai-commands` 检查命令目录。
 - Extra projects registered with `chatgpt-codex workspace add` when the user provides more authorized workspaces.
 - 当用户提供更多已授权工作区时，已用 `chatgpt-codex workspace add` 登记额外项目。
 - Local server started.

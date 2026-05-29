@@ -39,6 +39,8 @@ def main(argv=None) -> int:
     init_parser.add_argument("--force", action="store_true")
 
     subcommands.add_parser("doctor", help="Check local prerequisites. / 检查本地环境。")
+    subcommands.add_parser("status", help="Print machine-readable AI-native local status. / 打印机器可读的 AI-native 本地状态。")
+    subcommands.add_parser("ai-commands", help="Print machine-readable AI-native command catalog. / 打印机器可读的 AI-native 命令目录。")
     subcommands.add_parser("token", help="Print the configured bearer token. / 打印已配置的 bearer token。")
     subcommands.add_parser("openapi", help="Print the OpenAPI document. / 打印 OpenAPI 文档。")
     subcommands.add_parser("gpt-instructions", help="Print Custom GPT setup instructions. / 打印 Custom GPT 配置说明。")
@@ -106,6 +108,12 @@ def main(argv=None) -> int:
 
     if args.command in {"agent-brief", "ai-native", "skills", "skill"}:
         print(_agent_brief())
+        return 0
+    if args.command == "status":
+        print(json.dumps(_management_status(cfg_path), indent=2, ensure_ascii=False))
+        return 0
+    if args.command == "ai-commands":
+        print(json.dumps(_ai_command_catalog(), indent=2, ensure_ascii=False))
         return 0
     if args.command == "route-options":
         print(_route_options())
@@ -218,6 +226,86 @@ def _doctor(config: AppConfig) -> int:
         ok = False
     print(f"cloudflared: {'OK found / 已找到' if shutil.which('cloudflared') else 'OPTIONAL missing / 可选，未找到，仅 tunnel 命令需要'}")
     return 0 if ok else 1
+
+
+def _management_status(cfg_path: Path) -> dict:
+    permissions_file = permissions_path(Path.cwd())
+    result = {
+        "config_path": str(cfg_path),
+        "config_exists": cfg_path.exists(),
+        "permissions_path": str(permissions_file),
+        "permissions_exists": permissions_file.exists(),
+        "os": _platform_label(),
+        "cloudflared_found": bool(shutil.which("cloudflared")),
+        "configured": False,
+    }
+    if cfg_path.exists():
+        config = load_config(cfg_path)
+        result.update(
+            {
+                "configured": True,
+                "active_workspace": config.active_workspace,
+                "workspace": str(config.workspace),
+                "workspaces": config.workspace_entries(),
+                "local_server": f"http://{config.host}:{config.port}",
+                "public_base_url": config.public_base_url,
+                "openapi_url": f"{config.public_base_url.rstrip('/')}/openapi.json",
+                "privacy_url": f"{config.public_base_url.rstrip('/')}/privacy",
+                "token_configured": bool(config.token),
+            }
+        )
+    if permissions_file.exists():
+        permissions = load_permissions(permissions_file)
+        result["permissions"] = {
+            "workspace": str(permissions.workspace),
+            "operating_system": permissions.operating_system,
+            "access_plan": permissions.access_plan,
+            "public_base_url": permissions.public_base_url,
+            "allow_browser_automation": permissions.allow_browser_automation,
+            "allow_start_services": permissions.allow_start_services,
+            "allow_install_helpers": permissions.allow_install_helpers,
+            "allow_workspace_write": permissions.allow_workspace_write,
+            "allow_command_execution": permissions.allow_command_execution,
+            "hostname": permissions.hostname,
+        }
+    return result
+
+
+def _ai_command_catalog() -> dict:
+    return {
+        "setup": [
+            "chatgpt-codex init --workspace <path> --workspace-name <name> --public-base-url <url>",
+            "chatgpt-codex authorize --workspace <path> --operating-system auto --access-plan <plan> --public-base-url <url>",
+            "chatgpt-codex permissions-template --output .chatgpt-codex/permissions.json",
+        ],
+        "inspect": [
+            "chatgpt-codex status",
+            "chatgpt-codex doctor",
+            "chatgpt-codex route-options",
+            "chatgpt-codex workspace status",
+            "chatgpt-codex workspace list",
+        ],
+        "workspace": [
+            "chatgpt-codex workspace add --name <name> --path <path>",
+            "chatgpt-codex workspace add --name <name> --path <path> --activate",
+            "chatgpt-codex workspace switch <name>",
+        ],
+        "chatgpt_builder": [
+            "chatgpt-codex gpt-instructions",
+            "chatgpt-codex openapi",
+            "chatgpt-codex token",
+            "chatgpt-codex open-chatgpt",
+        ],
+        "runtime": [
+            "chatgpt-codex serve",
+            "chatgpt-codex tunnel",
+        ],
+        "notes": [
+            "status and ai-commands are machine-readable JSON",
+            "status reports token_configured but never prints the bearer token",
+            "workspace switching is limited to registered workspace names",
+        ],
+    }
 
 
 def _workspace_command(args, config: AppConfig, cfg_path: Path) -> int:

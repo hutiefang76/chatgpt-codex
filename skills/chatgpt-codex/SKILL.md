@@ -88,6 +88,17 @@ Permissions template:
 - If the user already provided answers, prefer `chatgpt-codex authorize` because it writes validated values.
 - 如果用户已提供答案，优先使用 `chatgpt-codex authorize`，因为它会写入校验后的值。
 
+AI-native management:
+
+AI-native 管理：
+
+- Start with `chatgpt-codex status` to read machine-readable local state.
+- 先运行 `chatgpt-codex status` 读取机器可读的本地状态。
+- Use `chatgpt-codex ai-commands` to discover the local command catalog.
+- 用 `chatgpt-codex ai-commands` 获取本地命令目录。
+- `status` reports whether a token exists but never prints the bearer token itself.
+- `status` 只报告 token 是否存在，不打印 bearer token 原文。
+
 Install on macOS:
 
 macOS 安装：
