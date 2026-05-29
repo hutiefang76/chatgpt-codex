@@ -15,6 +15,21 @@ def open_without_proxy(request):
     return opener.open(request, timeout=5)
 
 
+def post_json(url, body):
+    payload = json.dumps(body).encode("utf-8")
+    request = Request(
+        url,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer secret-token",
+        },
+    )
+    response = open_without_proxy(request)
+    return json.loads(response.read().decode("utf-8"))
+
+
 class ServerTests(unittest.TestCase):
     def test_server_requires_bearer_token_for_actions(self):
         with tempfile.TemporaryDirectory() as workspace:
@@ -75,6 +90,43 @@ class ServerTests(unittest.TestCase):
 
                 self.assertEqual(response.status, 200)
                 self.assertEqual(body["entries"][0]["path"], "hello.txt")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
+    def test_switch_workspace_changes_action_scope_and_persists_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            alpha = root / "alpha"
+            beta = root / "beta"
+            alpha.mkdir()
+            beta.mkdir()
+            (alpha / "alpha.txt").write_text("alpha", encoding="utf-8")
+            (beta / "beta.txt").write_text("beta", encoding="utf-8")
+            config_path = root / "config.json"
+            config = AppConfig(
+                workspace=alpha,
+                token="secret-token",
+                host="127.0.0.1",
+                port=0,
+                public_base_url="https://actions.example.com",
+                workspaces={"alpha": alpha, "beta": beta},
+                active_workspace="alpha",
+            )
+            server = create_server(config, config_path)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                status = post_json(base + "/workspace_status", {})
+                self.assertEqual(status["active_workspace"], "alpha")
+                switched = post_json(base + "/switch_workspace", {"name": "beta"})
+                self.assertEqual(switched["active_workspace"], "beta")
+                listing = post_json(base + "/list_files", {"path": ".", "recursive": True})
+                self.assertEqual(listing["entries"][0]["path"], "beta.txt")
+                persisted = json.loads(config_path.read_text(encoding="utf-8"))
+                self.assertEqual(persisted["active_workspace"], "beta")
             finally:
                 server.shutdown()
                 server.server_close()

@@ -129,6 +129,19 @@ chatgpt-codex init --workspace "$WORKSPACE" --public-base-url "$PUBLIC_BASE_URL"
 chatgpt-codex doctor
 ```
 
+Optional additional authorized projects:
+
+可选添加更多已授权项目：
+
+```bash
+chatgpt-codex workspace add --name "$PROJECT_NAME" --path "$PROJECT_PATH"
+chatgpt-codex workspace list
+```
+
+Do not let ChatGPT switch to arbitrary paths. It may only use workspace names returned by `list_workspaces`.
+
+不要让 ChatGPT 切换到任意路径。它只能使用 `list_workspaces` 返回的工作区名称。
+
 Windows PowerShell:
 
 Windows PowerShell：
@@ -191,6 +204,22 @@ chatgpt-codex open-chatgpt
 Use Chrome automation to create or edit the GPT, paste `chatgpt-codex gpt-instructions`, import the schema URL, set Bearer auth with `chatgpt-codex token`, and save as private. Do not request or store ChatGPT credentials, cookies, or API keys.
 
 使用 Chrome 自动化创建或编辑 GPT，粘贴 `chatgpt-codex gpt-instructions`，导入 schema URL，用 `chatgpt-codex token` 设置 Bearer 鉴权，并保存为私有。不要索要或保存 ChatGPT 凭据、cookie 或 API key。
+
+In the GPT conversation, project switching flow is:
+
+GPT 对话中的项目切换流程：
+
+1. Call `workspace_status` before file, code, or command work and show the current local directory.
+2. Call `list_workspaces` when the user asks what projects are available.
+3. Call `switch_workspace` only with an authorized workspace name.
+4. After switching, state the active workspace name and local path.
+
+中文：
+
+1. 文件、代码或命令操作前调用 `workspace_status`，并显示当前本地目录。
+2. 用户询问可用项目时调用 `list_workspaces`。
+3. 只用已授权工作区名称调用 `switch_workspace`。
+4. 切换后说明当前工作区名称和本地路径。
 
 ## Verification / 验证
 

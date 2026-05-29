@@ -54,6 +54,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - macOS 运行 `./scripts/install.sh`；Windows PowerShell 运行 `.\scripts\install.ps1`。
 - Run `chatgpt-codex init`.
 - 运行 `chatgpt-codex init`。
+- Add extra authorized projects with `chatgpt-codex workspace add --name <name> --path <path>`.
+- 用 `chatgpt-codex workspace add --name <name> --path <path>` 添加额外已授权项目。
 - Run `chatgpt-codex route-options` and `chatgpt-codex authorize` to save choices in `.chatgpt-codex/permissions.json`.
 - 运行 `chatgpt-codex route-options` 和 `chatgpt-codex authorize`，把选项保存到 `.chatgpt-codex/permissions.json`。
 - If the user wants manual file editing, copy root `permissions.example.json` with `scripts/prepare-permissions.sh` or `scripts/prepare-permissions.ps1`.
@@ -66,6 +68,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 没有 Cloudflare 登录/域名时使用临时 HTTPS 隧道；两者都提供时使用 `chatgpt-codex.<domain>`。
 - Open ChatGPT Builder with `chatgpt-codex open-chatgpt` only after browser automation is approved and the user has logged in manually.
 - 只有在用户授权浏览器自动化并手动登录后，才用 `chatgpt-codex open-chatgpt` 打开 ChatGPT Builder。
+- Ensure GPT instructions mention `workspace_status`, `list_workspaces`, and `switch_workspace` for showing and switching the current local directory.
+- 确保 GPT Instructions 写明用 `workspace_status`、`list_workspaces` 和 `switch_workspace` 显示并切换当前本地目录。
 - Verify `/health`, `/openapi.json`, and one authenticated read-only action.
 - 验证 `/health`、`/openapi.json` 和一个带鉴权的只读 Action。
 - Print `chatgpt-codex gpt-instructions`.

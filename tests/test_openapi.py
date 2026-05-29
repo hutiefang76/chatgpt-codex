@@ -8,14 +8,14 @@ class OpenApiTests(unittest.TestCase):
         document = make_openapi_document("https://actions.example.com")
 
         self.assertEqual(document["servers"][0]["url"], "https://actions.example.com")
-        for path in ["/list_files", "/read_file", "/search_text", "/write_file", "/apply_patch", "/exec_command"]:
+        for path in ["/workspace_status", "/list_workspaces", "/switch_workspace", "/list_files", "/read_file", "/search_text", "/write_file", "/apply_patch", "/exec_command"]:
             with self.subTest(path=path):
                 response = document["paths"][path]["post"]["responses"]["200"]
                 schema = response["content"]["application/json"]["schema"]
                 self.assertIn("$ref", schema)
 
         components = document["components"]["schemas"]
-        for schema_name in ["FileListingResult", "ReadFileResult", "SearchResult", "WriteFileResult", "PatchResult", "CommandResult"]:
+        for schema_name in ["WorkspaceStatusResult", "WorkspaceListResult", "FileListingResult", "ReadFileResult", "SearchResult", "WriteFileResult", "PatchResult", "CommandResult"]:
             with self.subTest(schema_name=schema_name):
                 self.assertEqual(components[schema_name]["type"], "object")
                 self.assertIn("properties", components[schema_name])
@@ -33,4 +33,3 @@ class OpenApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

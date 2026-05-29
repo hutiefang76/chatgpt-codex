@@ -83,6 +83,58 @@ class CliTests(unittest.TestCase):
             self.assertIn("https://actions.example.com/openapi.json", output)
             self.assertIn("Bearer", output)
             self.assertIn("Only me", output)
+            self.assertIn("workspace_status", output)
+            self.assertIn("switch_workspace", output)
+
+    def test_workspace_cli_adds_lists_and_switches_authorized_workspaces(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            first = Path(tmp) / "first"
+            second = Path(tmp) / "second"
+            first.mkdir()
+            second.mkdir()
+            run_quietly(
+                [
+                    "--config",
+                    str(config_path),
+                    "init",
+                    "--workspace",
+                    str(first),
+                    "--workspace-name",
+                    "first",
+                ]
+            )
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "workspace",
+                        "add",
+                        "--name",
+                        "second",
+                        "--path",
+                        str(second),
+                        "--activate",
+                    ]
+                )
+
+            config = load_config(config_path)
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(config.active_workspace, "second")
+            self.assertEqual(config.workspace, second.resolve())
+            self.assertIn("first", config.workspaces)
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "workspace", "list"])
+
+            listing = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(listing["active_workspace"], "second")
+            self.assertEqual(len(listing["workspaces"]), 2)
 
     def test_ai_native_alias_prints_agent_handoff(self):
         for command in ["agent-brief", "ai-native", "skills", "skill"]:

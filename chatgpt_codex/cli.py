@@ -32,6 +32,7 @@ def main(argv=None) -> int:
 
     init_parser = subcommands.add_parser("init", help="Create a local config file. / 创建本地配置文件。")
     init_parser.add_argument("--workspace", default=".", help="Workspace ChatGPT may access. / ChatGPT 可访问的工作区。")
+    init_parser.add_argument("--workspace-name", default="", help="Name for this workspace. / 这个工作区的名称。")
     init_parser.add_argument("--public-base-url", default="https://example.com", help="Public HTTPS base URL. / 公网 HTTPS 根地址。")
     init_parser.add_argument("--host", default="127.0.0.1")
     init_parser.add_argument("--port", type=int, default=8766)
@@ -56,6 +57,17 @@ def main(argv=None) -> int:
     serve_parser.add_argument("--host", default=None)
     serve_parser.add_argument("--port", type=int, default=None)
 
+    workspace_parser = subcommands.add_parser("workspace", help="Manage authorized workspaces. / 管理已授权工作区。")
+    workspace_subcommands = workspace_parser.add_subparsers(dest="workspace_command", required=True)
+    workspace_subcommands.add_parser("status", help="Show active workspace. / 显示当前工作区。")
+    workspace_subcommands.add_parser("list", help="List authorized workspaces. / 列出已授权工作区。")
+    workspace_add = workspace_subcommands.add_parser("add", help="Add an authorized workspace. / 添加已授权工作区。")
+    workspace_add.add_argument("--name", required=True, help="Workspace name used in ChatGPT. / ChatGPT 中使用的工作区名称。")
+    workspace_add.add_argument("--path", required=True, help="Absolute or relative local path. / 本地路径。")
+    workspace_add.add_argument("--activate", action="store_true", help="Make it the active workspace now. / 立即切换为当前工作区。")
+    workspace_switch = workspace_subcommands.add_parser("switch", help="Switch active workspace. / 切换当前工作区。")
+    workspace_switch.add_argument("name", help="Workspace name. / 工作区名称。")
+
     tunnel_parser = subcommands.add_parser("tunnel", help="Start the built-in cloudflared tunnel to the local server. / 启动内置 cloudflared 隧道。")
     tunnel_parser.add_argument("--cloudflared", default="cloudflared")
 
@@ -76,12 +88,16 @@ def main(argv=None) -> int:
     cfg_path = Path(args.config).expanduser() if args.config else config_path(Path.cwd())
 
     if args.command == "init":
+        workspace_path = Path(args.workspace).expanduser().resolve()
+        workspace_name = args.workspace_name or workspace_path.name or "default"
         config = AppConfig(
-            workspace=Path(args.workspace).expanduser().resolve(),
+            workspace=workspace_path,
             token=AppConfig.default(Path(args.workspace)).token,
             host=args.host,
             port=args.port,
             public_base_url=args.public_base_url.rstrip("/"),
+            workspaces={workspace_name: workspace_path},
+            active_workspace=workspace_name,
         )
         save_config(config, cfg_path, overwrite=args.force)
         print(f"Config written / 配置已写入: {cfg_path}")
@@ -158,13 +174,15 @@ def main(argv=None) -> int:
     if args.command == "gpt-instructions":
         print(_gpt_instructions(config))
         return 0
+    if args.command == "workspace":
+        return _workspace_command(args, config, cfg_path)
     if args.command == "serve":
         if args.host:
             config.host = args.host
         if args.port:
             config.port = args.port
-        server = create_server(config)
-        print(f"Serving / 正在服务 {config.workspace} at http://{config.host}:{server.server_port}")
+        server = create_server(config, cfg_path)
+        print(f"Serving / 正在服务 {config.active_workspace}:{config.workspace} at http://{config.host}:{server.server_port}")
         print(f"OpenAPI: {config.public_base_url.rstrip('/')}/openapi.json")
         try:
             server.serve_forever()
@@ -186,12 +204,14 @@ def main(argv=None) -> int:
 def _doctor(config: AppConfig) -> int:
     ok = True
     print(f"OS / 操作系统: {_platform_label()}")
-    print(f"Workspace / 工作区: {config.workspace}")
+    print(f"Active workspace / 当前工作区: {config.active_workspace}")
+    print(f"Workspace path / 工作区路径: {config.workspace}")
     if not config.workspace.exists():
         print("  FAIL workspace does not exist / 工作区不存在")
         ok = False
     else:
         print("  OK workspace exists / 工作区存在")
+    print(f"Authorized workspaces / 已授权工作区: {len(config.workspaces)}")
     print(f"Local server / 本地服务: http://{config.host}:{config.port}")
     print(f"Public base URL / 公网根地址: {config.public_base_url}")
     print(f"Bearer token / Bearer token: {'OK set / 已设置' if config.token else 'FAIL missing / 缺失'}")
@@ -199,6 +219,28 @@ def _doctor(config: AppConfig) -> int:
         ok = False
     print(f"cloudflared: {'OK found / 已找到' if shutil.which('cloudflared') else 'OPTIONAL missing / 可选，未找到，仅 tunnel 命令需要'}")
     return 0 if ok else 1
+
+
+def _workspace_command(args, config: AppConfig, cfg_path: Path) -> int:
+    if args.workspace_command == "status":
+        print(json.dumps(config.workspace_status(), indent=2, ensure_ascii=False))
+        return 0
+    if args.workspace_command == "list":
+        print(json.dumps({"active_workspace": config.active_workspace, "workspaces": config.workspace_entries()}, indent=2, ensure_ascii=False))
+        return 0
+    if args.workspace_command == "add":
+        config.add_workspace(args.name, Path(args.path), activate=args.activate)
+        save_config(config, cfg_path, overwrite=True)
+        print(f"Workspace added / 已添加工作区: {args.name} -> {Path(args.path).expanduser().resolve()}")
+        if args.activate:
+            print(f"Active workspace / 当前工作区: {config.active_workspace}")
+        return 0
+    if args.workspace_command == "switch":
+        status = config.switch_workspace(args.name)
+        save_config(config, cfg_path, overwrite=True)
+        print(json.dumps(status, indent=2, ensure_ascii=False))
+        return 0
+    return 2
 
 
 def _platform_label() -> str:
@@ -304,10 +346,10 @@ def _gpt_instructions(config: AppConfig) -> str:
    Instructions / 指令：
 
 You are my local coding assistant for the workspace exposed through Actions.
-Use list_files, read_file, search_text, write_file, apply_patch, and exec_command when I ask about files, code, commands, or the current project. Inspect files before editing. Keep changes scoped. Do not run destructive commands unless I explicitly ask for that exact action in the current chat.
+Use workspace_status before file, code, or command work so you can show the current local directory. Use list_workspaces and switch_workspace when I ask to view or switch projects. Only switch to authorized workspace names returned by list_workspaces. After switching, state the active workspace name and local path. Use list_files, read_file, search_text, write_file, apply_patch, and exec_command for project work. Inspect files before editing. Keep changes scoped. Do not run destructive commands unless I explicitly ask for that exact action in the current chat.
 
 你是我的本地编程助手，通过 Actions 访问我暴露的 workspace。
-当我询问文件、代码、命令或当前项目时，优先使用 list_files、read_file、search_text、write_file、apply_patch 和 exec_command。编辑前先检查文件。保持改动范围清晰。除非我在当前对话中明确要求执行某个危险操作，否则不要运行破坏性命令。
+当我询问文件、代码、命令或当前项目时，先使用 workspace_status 显示当前本地目录。当我要求查看或切换项目时，使用 list_workspaces 和 switch_workspace。只能切换到 list_workspaces 返回的已授权工作区名称。切换后说明当前工作区名称和本地路径。项目操作使用 list_files、read_file、search_text、write_file、apply_patch 和 exec_command。编辑前先检查文件。保持改动范围清晰。除非我在当前对话中明确要求执行某个危险操作，否则不要运行破坏性命令。
 
 3. Actions:
    Actions / 动作：

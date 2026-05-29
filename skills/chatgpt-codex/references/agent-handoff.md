@@ -48,6 +48,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 如果偏好手工编辑，已用对应操作系统辅助脚本复制根目录的 `permissions.example.json`。
 - Config created under `.chatgpt-codex/config.json`.
 - 已在 `.chatgpt-codex/config.json` 创建配置。
+- Extra projects registered with `chatgpt-codex workspace add` when the user provides more authorized workspaces.
+- 当用户提供更多已授权工作区时，已用 `chatgpt-codex workspace add` 登记额外项目。
 - Local server started.
 - 已启动本地服务。
 - Public HTTPS route available when ChatGPT web access is required.
@@ -62,5 +64,7 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 带鉴权只读 Action 可用。
 - Builder fields printed.
 - 已打印 Builder 字段。
+- GPT instructions include `workspace_status`, `list_workspaces`, and `switch_workspace`, and require showing the current local directory after each switch.
+- GPT Instructions 包含 `workspace_status`、`list_workspaces` 和 `switch_workspace`，并要求每次切换后显示当前本地目录。
 - If browser automation is approved, ChatGPT Builder configured after the user logs in manually.
 - 如果用户授权浏览器自动化，已在用户手动登录后配置 ChatGPT Builder。

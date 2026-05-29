@@ -20,6 +20,33 @@ def make_openapi_document(public_base_url: str) -> Dict[str, object]:
             "/health": {"get": {"operationId": "health", "responses": {"200": _json_response("Health", "HealthResult")}}},
             "/openapi.json": {"get": {"operationId": "openapi", "responses": {"200": {"description": "OpenAPI document"}}}},
             "/privacy": {"get": {"operationId": "privacy", "responses": {"200": {"description": "Privacy policy"}}}},
+            "/workspace_status": {
+                "post": {
+                    "operationId": "getWorkspaceStatus",
+                    "summary": "Show the active local workspace and all authorized workspaces. / 显示当前本地工作区和所有已授权工作区。",
+                    "security": [{"bearerAuth": []}],
+                    "requestBody": _optional_request_body("EmptyRequest"),
+                    "responses": {"200": _json_response("Workspace status", "WorkspaceStatusResult")},
+                }
+            },
+            "/list_workspaces": {
+                "post": {
+                    "operationId": "listWorkspaces",
+                    "summary": "List authorized workspaces that can be selected in this GPT chat. / 列出此 GPT 对话中可切换的已授权工作区。",
+                    "security": [{"bearerAuth": []}],
+                    "requestBody": _optional_request_body("EmptyRequest"),
+                    "responses": {"200": _json_response("Workspace list", "WorkspaceListResult")},
+                }
+            },
+            "/switch_workspace": {
+                "post": {
+                    "operationId": "switchWorkspace",
+                    "summary": "Switch the active workspace by authorized workspace name. / 按已授权工作区名称切换当前工作区。",
+                    "security": [{"bearerAuth": []}],
+                    "requestBody": _request_body("SwitchWorkspaceRequest"),
+                    "responses": {"200": _json_response("Workspace status", "WorkspaceStatusResult")},
+                }
+            },
             "/list_files": {
                 "post": {
                     "operationId": "listFiles",
@@ -91,6 +118,12 @@ def _request_body(schema_name: str) -> Dict[str, object]:
     }
 
 
+def _optional_request_body(schema_name: str) -> Dict[str, object]:
+    body = _request_body(schema_name)
+    body["required"] = False
+    return body
+
+
 def _json_response(description: str, schema_name: str) -> Dict[str, object]:
     return {
         "description": description,
@@ -100,7 +133,36 @@ def _json_response(description: str, schema_name: str) -> Dict[str, object]:
 
 def _schemas() -> Dict[str, object]:
     return {
-        "HealthResult": _object({"ok": {"type": "boolean"}, "workspace": {"type": "string"}, "public_base_url": {"type": "string"}}),
+        "HealthResult": _object(
+            {
+                "ok": {"type": "boolean"},
+                "workspace": {"type": "string"},
+                "active_workspace": {"type": "string"},
+                "public_base_url": {"type": "string"},
+            }
+        ),
+        "EmptyRequest": _object({}),
+        "WorkspaceEntry": _object(
+            {
+                "name": {"type": "string"},
+                "path": {"type": "string"},
+                "active": {"type": "boolean"},
+            }
+        ),
+        "WorkspaceStatusResult": _object(
+            {
+                "active_workspace": {"type": "string"},
+                "workspace": {"type": "string"},
+                "workspaces": {"type": "array", "items": {"$ref": "#/components/schemas/WorkspaceEntry"}},
+            }
+        ),
+        "WorkspaceListResult": _object(
+            {
+                "active_workspace": {"type": "string"},
+                "workspaces": {"type": "array", "items": {"$ref": "#/components/schemas/WorkspaceEntry"}},
+            }
+        ),
+        "SwitchWorkspaceRequest": _object({"name": {"type": "string"}}, ["name"]),
         "ListFilesRequest": _object(
             {
                 "path": {"type": "string", "default": "."},

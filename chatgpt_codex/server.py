@@ -1,8 +1,10 @@
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable, Dict
+from pathlib import Path
+from threading import Lock
+from typing import Any, Callable, Dict, Optional
 
-from .config import AppConfig
+from .config import AppConfig, save_config
 from .executor import CommandExecutor
 from .openapi import make_openapi_document
 from .workspace import WorkspaceTools
@@ -18,24 +20,44 @@ ChatGPT Codex 运行在你自己的电脑上。
 """
 
 
-def create_server(config: AppConfig) -> ThreadingHTTPServer:
+def create_server(config: AppConfig, config_file: Optional[Path] = None) -> ThreadingHTTPServer:
     """Create a bearer-protected HTTP action server.
 
     创建带 bearer 鉴权的 HTTP Action 服务。
     """
 
-    workspace_tools = WorkspaceTools(config.workspace)
-    executor = CommandExecutor(config.workspace)
+    config_lock = Lock()
+
+    def current_tools():
+        with config_lock:
+            workspace = config.active_workspace_path()
+        return WorkspaceTools(workspace), CommandExecutor(workspace)
+
+    def persist_config() -> None:
+        if config_file is not None:
+            save_config(config, Path(config_file), overwrite=True)
+
+    def workspace_status() -> Dict[str, object]:
+        with config_lock:
+            return config.workspace_status()
+
+    def switch_workspace(name: str) -> Dict[str, object]:
+        with config_lock:
+            result = config.switch_workspace(name)
+            persist_config()
+            return result
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "ChatGPTCodex/0.1"
 
         def do_GET(self):
             if self.path == "/health":
+                status = workspace_status()
                 self._send_json(
                     {
                         "ok": True,
-                        "workspace": str(config.workspace),
+                        "workspace": status["workspace"],
+                        "active_workspace": status["active_workspace"],
                         "public_base_url": config.public_base_url.rstrip("/"),
                     }
                 )
@@ -52,7 +74,14 @@ def create_server(config: AppConfig) -> ThreadingHTTPServer:
             if not self._authorized():
                 self._send_json({"error": "missing or invalid bearer token"}, status=401)
                 return
+            workspace_tools, executor = current_tools()
             actions: Dict[str, Callable[[Dict[str, Any]], Dict[str, object]]] = {
+                "/workspace_status": lambda body: workspace_status(),
+                "/list_workspaces": lambda body: {
+                    "active_workspace": workspace_status()["active_workspace"],
+                    "workspaces": workspace_status()["workspaces"],
+                },
+                "/switch_workspace": lambda body: switch_workspace(body["name"]),
                 "/list_files": lambda body: workspace_tools.list_files(
                     body.get("path", "."),
                     bool(body.get("recursive", True)),

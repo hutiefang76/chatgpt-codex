@@ -1,6 +1,7 @@
 import json
 import os
 from dataclasses import dataclass
+from dataclasses import field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
@@ -51,6 +52,20 @@ class AppConfig:
     host: str = "127.0.0.1"
     port: int = 8766
     public_base_url: str = "https://example.com"
+    workspaces: Dict[str, Path] = field(default_factory=dict)
+    active_workspace: str = "default"
+
+    def __post_init__(self) -> None:
+        if not self.workspaces:
+            self.workspaces = {"default": Path(self.workspace).expanduser().resolve()}
+        else:
+            self.workspaces = {
+                _validate_workspace_name(name): Path(path).expanduser().resolve()
+                for name, path in self.workspaces.items()
+            }
+        if self.active_workspace not in self.workspaces:
+            self.active_workspace = next(iter(self.workspaces))
+        self.workspace = self.workspaces[self.active_workspace]
 
     @classmethod
     def default(cls, workspace: Path) -> "AppConfig":
@@ -58,22 +73,64 @@ class AppConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AppConfig":
+        workspace = Path(data["workspace"]).expanduser().resolve()
+        raw_workspaces = data.get("workspaces") or {"default": str(workspace)}
         return cls(
-            workspace=Path(data["workspace"]).expanduser().resolve(),
+            workspace=workspace,
             token=str(data["token"]),
             host=str(data.get("host", "127.0.0.1")),
             port=int(data.get("port", 8766)),
             public_base_url=str(data.get("public_base_url", "https://example.com")).rstrip("/"),
+            workspaces={str(name): Path(path).expanduser().resolve() for name, path in raw_workspaces.items()},
+            active_workspace=str(data.get("active_workspace", "default")),
         )
 
     def to_dict(self) -> Dict[str, Any]:
+        active_path = self.active_workspace_path()
         return {
-            "workspace": str(self.workspace),
+            "workspace": str(active_path),
             "token": self.token,
             "host": self.host,
             "port": self.port,
             "public_base_url": self.public_base_url.rstrip("/"),
+            "workspaces": {name: str(path) for name, path in sorted(self.workspaces.items())},
+            "active_workspace": self.active_workspace,
         }
+
+    def active_workspace_path(self) -> Path:
+        return self.workspaces[self.active_workspace]
+
+    def workspace_entries(self):
+        return [
+            {
+                "name": name,
+                "path": str(path),
+                "active": name == self.active_workspace,
+            }
+            for name, path in sorted(self.workspaces.items())
+        ]
+
+    def workspace_status(self) -> Dict[str, object]:
+        return {
+            "active_workspace": self.active_workspace,
+            "workspace": str(self.active_workspace_path()),
+            "workspaces": self.workspace_entries(),
+        }
+
+    def add_workspace(self, name: str, path: Path, activate: bool = False) -> None:
+        safe_name = _validate_workspace_name(name)
+        self.workspaces[safe_name] = Path(path).expanduser().resolve()
+        if activate:
+            self.active_workspace = safe_name
+        self.workspace = self.active_workspace_path()
+
+    def switch_workspace(self, name: str) -> Dict[str, object]:
+        safe_name = _validate_workspace_name(name)
+        if safe_name not in self.workspaces:
+            raise ValueError(f"unknown workspace: {safe_name}")
+        self.active_workspace = safe_name
+        self.workspace = self.active_workspace_path()
+        return self.workspace_status()
 
 
 @dataclass
@@ -204,3 +261,12 @@ def _set_private_permissions(path: Path) -> None:
         # Windows 上的隐私由用户目录 ACL 控制；chmod 只映射只读位。
         return
     Path(path).chmod(0o600)
+
+
+def _validate_workspace_name(name: str) -> str:
+    value = str(name or "").strip()
+    if not value:
+        raise ValueError("workspace name is required")
+    if any(char in value for char in "/\\:"):
+        raise ValueError("workspace name cannot contain path separators or ':'")
+    return value

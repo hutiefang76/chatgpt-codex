@@ -230,6 +230,32 @@ Start the local server:
 chatgpt-codex serve
 ```
 
+### Switching Projects In GPT / 在 GPT 里切换项目
+
+Register every project locally first. GPT can only switch between these authorized names; it cannot switch to an arbitrary path typed in chat.
+
+先在本地登记每个项目。GPT 只能在这些已授权名称之间切换，不能切换到对话里临时输入的任意路径。
+
+```bash
+chatgpt-codex workspace add --name demo --path /Users/me/project/demo --activate
+chatgpt-codex workspace add --name notes --path "/Users/hutiefang/project/ggu/课程笔记"
+chatgpt-codex workspace list
+```
+
+In ChatGPT, the user can say:
+
+在 ChatGPT 里，用户可以直接说：
+
+```text
+当前项目是什么？
+切换到 notes
+列一下当前目录
+```
+
+The GPT should call `workspace_status`, `list_workspaces`, and `switch_workspace`, then show the active local directory before file, code, or command work.
+
+GPT 应调用 `workspace_status`、`list_workspaces` 和 `switch_workspace`，并在文件、代码或命令操作前显示当前本地目录。
+
 At this point the local API is running. For ChatGPT web to call it, expose it through a public HTTPS route. With the built-in quick tunnel, run in another terminal:
 
 此时本地 API 已经可运行。若要让 ChatGPT 网页端调用它，需要通过公网 HTTPS 入口暴露服务。使用内置临时隧道时，在另一个终端运行：
@@ -338,6 +364,9 @@ In ChatGPT:
 - `write_file`: create or replace a file. / 创建或替换文件。
 - `apply_patch`: apply a limited `apply_patch` style patch. / 应用受限的 `apply_patch` 风格补丁。
 - `exec_command`: run a shell command after safety checks. / 通过安全检查后执行 shell 命令。
+- `workspace_status`: show the active workspace name and local path. / 显示当前工作区名称和本地路径。
+- `list_workspaces`: list authorized workspaces. / 列出已授权工作区。
+- `switch_workspace`: switch to an authorized workspace by name. / 按名称切换到已授权工作区。
 
 ## Security Model / 安全模型
 
@@ -351,6 +380,8 @@ Built-in guardrails:
 
 - All file paths must stay inside the configured workspace.
 - 所有文件路径必须位于配置的 workspace 内。
+- Project switching is limited to workspaces registered in `.chatgpt-codex/config.json`.
+- 项目切换仅限 `.chatgpt-codex/config.json` 中登记过的工作区。
 - Hidden implementation state such as `.git`, `.venv`, `node_modules`, and caches are skipped by file listing and search.
 - 文件列表和搜索会跳过 `.git`、`.venv`、`node_modules`、缓存等实现细节目录。
 - POST actions require `Authorization: Bearer <token>`.
