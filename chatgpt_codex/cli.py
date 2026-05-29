@@ -91,13 +91,12 @@ def main(argv=None) -> int:
         workspace_path = Path(args.workspace).expanduser().resolve()
         workspace_name = args.workspace_name or workspace_path.name or "default"
         config = AppConfig(
-            workspace=workspace_path,
-            token=AppConfig.default(Path(args.workspace)).token,
+            token=AppConfig.default(workspace_path).token,
+            workspaces={workspace_name: workspace_path},
+            active_workspace=workspace_name,
             host=args.host,
             port=args.port,
             public_base_url=args.public_base_url.rstrip("/"),
-            workspaces={workspace_name: workspace_path},
-            active_workspace=workspace_name,
         )
         save_config(config, cfg_path, overwrite=args.force)
         print(f"Config written / 配置已写入: {cfg_path}")

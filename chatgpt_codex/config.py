@@ -1,7 +1,6 @@
 import json
 import os
 from dataclasses import dataclass
-from dataclasses import field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
@@ -42,53 +41,55 @@ ACCESS_PLANS = {
 
 @dataclass
 class AppConfig:
-    """Runtime settings for one exposed workspace.
+    """Runtime settings for authorized workspaces.
 
-    单个已暴露工作区的运行配置。
+    已授权工作区的运行配置。
     """
 
-    workspace: Path
     token: str
+    workspaces: Dict[str, Path]
+    active_workspace: str
     host: str = "127.0.0.1"
     port: int = 8766
     public_base_url: str = "https://example.com"
-    workspaces: Dict[str, Path] = field(default_factory=dict)
-    active_workspace: str = "default"
 
     def __post_init__(self) -> None:
         if not self.workspaces:
-            self.workspaces = {"default": Path(self.workspace).expanduser().resolve()}
-        else:
-            self.workspaces = {
-                _validate_workspace_name(name): Path(path).expanduser().resolve()
-                for name, path in self.workspaces.items()
-            }
+            raise ValueError("at least one workspace is required")
+        self.workspaces = {
+            _validate_workspace_name(name): Path(path).expanduser().resolve()
+            for name, path in self.workspaces.items()
+        }
         if self.active_workspace not in self.workspaces:
-            self.active_workspace = next(iter(self.workspaces))
-        self.workspace = self.workspaces[self.active_workspace]
+            raise ValueError(f"active workspace is not authorized: {self.active_workspace}")
+
+    @property
+    def workspace(self) -> Path:
+        return self.active_workspace_path()
 
     @classmethod
-    def default(cls, workspace: Path) -> "AppConfig":
-        return cls(workspace=Path(workspace).expanduser().resolve(), token=generate_token())
+    def default(cls, workspace: Path, name: str = "default") -> "AppConfig":
+        safe_name = _validate_workspace_name(name)
+        return cls(
+            token=generate_token(),
+            workspaces={safe_name: Path(workspace).expanduser().resolve()},
+            active_workspace=safe_name,
+        )
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AppConfig":
-        workspace = Path(data["workspace"]).expanduser().resolve()
-        raw_workspaces = data.get("workspaces") or {"default": str(workspace)}
+        raw_workspaces = data["workspaces"]
         return cls(
-            workspace=workspace,
             token=str(data["token"]),
+            workspaces={str(name): Path(path).expanduser().resolve() for name, path in raw_workspaces.items()},
+            active_workspace=str(data["active_workspace"]),
             host=str(data.get("host", "127.0.0.1")),
             port=int(data.get("port", 8766)),
             public_base_url=str(data.get("public_base_url", "https://example.com")).rstrip("/"),
-            workspaces={str(name): Path(path).expanduser().resolve() for name, path in raw_workspaces.items()},
-            active_workspace=str(data.get("active_workspace", "default")),
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        active_path = self.active_workspace_path()
         return {
-            "workspace": str(active_path),
             "token": self.token,
             "host": self.host,
             "port": self.port,
@@ -122,14 +123,12 @@ class AppConfig:
         self.workspaces[safe_name] = Path(path).expanduser().resolve()
         if activate:
             self.active_workspace = safe_name
-        self.workspace = self.active_workspace_path()
 
     def switch_workspace(self, name: str) -> Dict[str, object]:
         safe_name = _validate_workspace_name(name)
         if safe_name not in self.workspaces:
             raise ValueError(f"unknown workspace: {safe_name}")
         self.active_workspace = safe_name
-        self.workspace = self.active_workspace_path()
         return self.workspace_status()
 
 

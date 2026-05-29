@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from chatgpt_codex.cli import main
-from chatgpt_codex.config import load_config, load_permissions
+from chatgpt_codex.config import AppConfig, load_config, load_permissions
 
 
 def run_quietly(args):
@@ -37,10 +37,16 @@ class CliTests(unittest.TestCase):
                 )
 
             config = load_config(config_path)
+            raw_config = json.loads(config_path.read_text(encoding="utf-8"))
             self.assertEqual(exit_code, 0)
             self.assertEqual(config.workspace, workspace.resolve())
+            self.assertEqual(config.active_workspace, "workspace")
             self.assertEqual(config.public_base_url, "https://actions.example.com")
             self.assertGreaterEqual(len(config.token), 32)
+            self.assertNotIn("workspace", raw_config)
+            self.assertIn("workspaces", raw_config)
+            self.assertEqual(raw_config["active_workspace"], "workspace")
+            self.assertEqual(raw_config["workspaces"]["workspace"], str(workspace.resolve()))
 
     def test_openapi_command_prints_importable_schema(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -135,6 +141,10 @@ class CliTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertEqual(listing["active_workspace"], "second")
             self.assertEqual(len(listing["workspaces"]), 2)
+
+    def test_app_config_requires_latest_workspace_registry_schema(self):
+        with self.assertRaises(KeyError):
+            AppConfig.from_dict({"workspace": "/tmp/legacy", "token": "secret-token"})
 
     def test_ai_native_alias_prints_agent_handoff(self):
         for command in ["agent-brief", "ai-native", "skills", "skill"]:

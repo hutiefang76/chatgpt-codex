@@ -296,11 +296,14 @@ Then set `public_base_url` in `.chatgpt-codex/config.json` to your HTTPS route. 
 
 ```json
 {
-  "workspace": "/absolute/path/to/your/project",
   "token": "keep-this-secret",
   "host": "127.0.0.1",
   "port": 8766,
-  "public_base_url": "https://chatgpt-codex.hutiefang.net"
+  "public_base_url": "https://chatgpt-codex.hutiefang.net",
+  "workspaces": {
+    "demo": "/absolute/path/to/your/project"
+  },
+  "active_workspace": "demo"
 }
 ```
 

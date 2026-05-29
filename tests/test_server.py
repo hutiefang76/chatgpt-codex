@@ -35,8 +35,9 @@ class ServerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workspace:
             server = create_server(
                 AppConfig(
-                    workspace=Path(workspace),
                     token="secret-token",
+                    workspaces={"default": Path(workspace)},
+                    active_workspace="default",
                     host="127.0.0.1",
                     port=0,
                     public_base_url="https://actions.example.com",
@@ -63,8 +64,9 @@ class ServerTests(unittest.TestCase):
             (root / "hello.txt").write_text("hello", encoding="utf-8")
             server = create_server(
                 AppConfig(
-                    workspace=root,
                     token="secret-token",
+                    workspaces={"default": root},
+                    active_workspace="default",
                     host="127.0.0.1",
                     port=0,
                     public_base_url="https://actions.example.com",
@@ -106,13 +108,12 @@ class ServerTests(unittest.TestCase):
             (beta / "beta.txt").write_text("beta", encoding="utf-8")
             config_path = root / "config.json"
             config = AppConfig(
-                workspace=alpha,
                 token="secret-token",
+                workspaces={"alpha": alpha, "beta": beta},
+                active_workspace="alpha",
                 host="127.0.0.1",
                 port=0,
                 public_base_url="https://actions.example.com",
-                workspaces={"alpha": alpha, "beta": beta},
-                active_workspace="alpha",
             )
             server = create_server(config, config_path)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
