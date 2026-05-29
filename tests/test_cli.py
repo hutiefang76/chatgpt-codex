@@ -193,7 +193,27 @@ class CliTests(unittest.TestCase):
         self.assertIn("chatgpt-codex status", catalog["inspect"])
         self.assertIn("chatgpt-codex set-public-url <url>", catalog["routing"])
         self.assertIn("chatgpt-codex verify", catalog["inspect"])
+        self.assertIn("chatgpt-codex api-smoke", catalog["inspect"])
         self.assertIn("chatgpt-codex token", catalog["chatgpt_builder"])
+
+    def test_api_smoke_exercises_action_interfaces_without_existing_config(self):
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            exit_code = main(["api-smoke"])
+
+        result = json.loads(stdout.getvalue())
+        check_names = [check["name"] for check in result["checks"]]
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(result["ok"])
+        self.assertIn("workspace_status", check_names)
+        self.assertIn("write_file", check_names)
+        self.assertIn("apply_patch", check_names)
+        self.assertIn("exec_command", check_names)
+        self.assertIn("switch_workspace", check_names)
+        self.assertIn("path_escape_blocked", check_names)
+        self.assertIn("dangerous_command_blocked", check_names)
+        self.assertNotIn("api-smoke-token", stdout.getvalue())
 
     def test_set_public_url_preserves_token_and_workspaces(self):
         with tempfile.TemporaryDirectory() as tmp:

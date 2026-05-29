@@ -4,6 +4,8 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 import webbrowser
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -52,6 +54,8 @@ def main(argv=None) -> int:
     verify_parser = subcommands.add_parser("verify", help="Verify health, schema, and one authenticated read-only action. / 验证健康检查、schema 和一个带鉴权只读 Action。")
     verify_parser.add_argument("--base-url", default="", help="Override base URL for verification. / 覆盖验证用根地址。")
     verify_parser.add_argument("--timeout", type=int, default=10, help="Request timeout seconds. / 请求超时秒数。")
+    api_smoke_parser = subcommands.add_parser("api-smoke", help="Run an interface-level smoke test in temporary workspaces. / 在临时工作区运行接口级冒烟测试。")
+    api_smoke_parser.add_argument("--timeout", type=int, default=10, help="Request timeout seconds. / 请求超时秒数。")
     subcommands.add_parser("permissions", help="Print saved setup permissions. / 打印已保存的配置授权。")
     template_parser = subcommands.add_parser("permissions-template", help="Print or write a permissions template. / 打印或写入授权模板。")
     template_parser.add_argument("--output", default="", help="Optional output path. / 可选输出路径。")
@@ -174,6 +178,10 @@ def main(argv=None) -> int:
             return 0
         print(json.dumps(template, indent=2, ensure_ascii=False))
         return 0
+    if args.command == "api-smoke":
+        result = _api_smoke(args.timeout)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result["ok"] else 1
 
     config = load_config(cfg_path)
 
@@ -299,6 +307,7 @@ def _ai_command_catalog() -> dict:
             "chatgpt-codex doctor",
             "chatgpt-codex verify",
             "chatgpt-codex verify --base-url <url>",
+            "chatgpt-codex api-smoke",
             "chatgpt-codex route-options",
             "chatgpt-codex workspace status",
             "chatgpt-codex workspace list",
@@ -421,6 +430,149 @@ def _verify_request(request: Request, timeout: int, url: str) -> dict:
         return {"url": url, "ok": False, "status": exc.code, "error": content[:300]}
     except (OSError, URLError) as exc:
         return {"url": url, "ok": False, "status": 0, "error": str(exc)}
+
+
+def _api_smoke(timeout: int) -> dict:
+    with tempfile.TemporaryDirectory(prefix="chatgpt-codex-api-smoke-") as tmp:
+        root = Path(tmp)
+        alpha = root / "alpha"
+        beta = root / "beta"
+        alpha.mkdir()
+        beta.mkdir()
+        (alpha / "alpha.txt").write_text("alpha seed\n", encoding="utf-8")
+        (beta / "beta.txt").write_text("beta seed\n", encoding="utf-8")
+        config_path = root / "config.json"
+        config = AppConfig(
+            token="api-smoke-token",
+            workspaces={"alpha": alpha, "beta": beta},
+            active_workspace="alpha",
+            host="127.0.0.1",
+            port=0,
+            public_base_url="http://127.0.0.1",
+        )
+        server = create_server(config, config_path)
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        config.public_base_url = base_url
+        save_config(config, config_path, overwrite=True)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        checks = []
+        try:
+            checks.append(_api_check("health", lambda: _api_get(f"{base_url}/health", timeout), lambda body: body["ok"] and body["active_workspace"] == "alpha"))
+            checks.append(_api_check("openapi", lambda: _api_get(f"{base_url}/openapi.json", timeout), lambda body: body["servers"][0]["url"] == base_url and "/exec_command" in body["paths"]))
+            checks.append(_api_check_status("auth_required", lambda: _api_post(f"{base_url}/workspace_status", {}, "", timeout), 401))
+            checks.append(_api_check("workspace_status", lambda: _api_post(f"{base_url}/workspace_status", {}, config.token, timeout), lambda body: body["active_workspace"] == "alpha" and body["workspace"] == str(alpha.resolve())))
+            checks.append(_api_check("list_workspaces", lambda: _api_post(f"{base_url}/list_workspaces", {}, config.token, timeout), lambda body: [item["name"] for item in body["workspaces"]] == ["alpha", "beta"]))
+            checks.append(_api_check("list_files", lambda: _api_post(f"{base_url}/list_files", {"path": ".", "recursive": False}, config.token, timeout), lambda body: body["entries"][0]["path"] == "alpha.txt"))
+            checks.append(_api_check("read_file", lambda: _api_post(f"{base_url}/read_file", {"path": "alpha.txt"}, config.token, timeout), lambda body: body["content"] == "alpha seed\n"))
+            checks.append(_api_check("write_file", lambda: _api_post(f"{base_url}/write_file", {"path": "notes/api.txt", "content": "alpha line\nneedle\n"}, config.token, timeout), lambda body: body["bytes_written"] > 0))
+            checks.append(_api_check("search_text", lambda: _api_post(f"{base_url}/search_text", {"query": "needle", "path": "."}, config.token, timeout), lambda body: body["matches"][0]["path"] == "notes/api.txt"))
+            checks.append(
+                _api_check(
+                    "apply_patch",
+                    lambda: _api_post(
+                        f"{base_url}/apply_patch",
+                        {
+                            "patch": "\n".join(
+                                [
+                                    "*** Begin Patch",
+                                    "*** Update File: notes/api.txt",
+                                    "@@",
+                                    " alpha line",
+                                    "-needle",
+                                    "+needle patched",
+                                    "*** End Patch",
+                                ]
+                            )
+                        },
+                        config.token,
+                        timeout,
+                    ),
+                    lambda body: body["changed_files"] == ["notes/api.txt"],
+                )
+            )
+            checks.append(_api_check("read_after_patch", lambda: _api_post(f"{base_url}/read_file", {"path": "notes/api.txt"}, config.token, timeout), lambda body: "needle patched" in body["content"]))
+            command = f"\"{sys.executable}\" -c \"from pathlib import Path; print(Path.cwd().name)\""
+            checks.append(_api_check("exec_command", lambda: _api_post(f"{base_url}/exec_command", {"command": command, "cwd": ".", "timeout_seconds": 10}, config.token, timeout), lambda body: body["exit_code"] == 0 and body["stdout"].strip() == "alpha"))
+            checks.append(_api_check("switch_workspace", lambda: _api_post(f"{base_url}/switch_workspace", {"name": "beta"}, config.token, timeout), lambda body: body["active_workspace"] == "beta" and body["workspace"] == str(beta.resolve())))
+            checks.append(_api_check("list_files_after_switch", lambda: _api_post(f"{base_url}/list_files", {"path": ".", "recursive": False}, config.token, timeout), lambda body: body["entries"][0]["path"] == "beta.txt"))
+            checks.append(_api_check_status("path_escape_blocked", lambda: _api_post(f"{base_url}/read_file", {"path": "../outside.txt"}, config.token, timeout), 400))
+            checks.append(_api_check_status("dangerous_command_blocked", lambda: _api_post(f"{base_url}/exec_command", {"command": "rm -rf /tmp/nope"}, config.token, timeout), 400))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+        return {
+            "ok": all(check["ok"] for check in checks),
+            "base_url": base_url,
+            "workspace_root": str(root),
+            "checks": checks,
+        }
+
+
+def _api_get(url: str, timeout: int) -> dict:
+    return _api_request(Request(url, method="GET"), timeout)
+
+
+def _api_post(url: str, body: dict, token: str, timeout: int) -> dict:
+    payload = json.dumps(body).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return _api_request(Request(url, data=payload, method="POST", headers=headers), timeout)
+
+
+def _api_request(request: Request, timeout: int) -> dict:
+    opener = build_opener(ProxyHandler({}))
+    try:
+        response = opener.open(request, timeout=max(1, int(timeout or 10)))
+        return {
+            "status": response.status,
+            "body": json.loads(response.read().decode("utf-8")),
+        }
+    except HTTPError as exc:
+        content = exc.read().decode("utf-8", errors="replace")
+        try:
+            body = json.loads(content)
+        except ValueError:
+            body = {"error": content[:300]}
+        return {"status": exc.code, "body": body}
+    except (OSError, URLError) as exc:
+        return {"status": 0, "body": {"error": str(exc)}}
+
+
+def _api_check(name: str, call, predicate) -> dict:
+    result = call()
+    error = ""
+    try:
+        ok = result["status"] == 200 and predicate(result["body"])
+    except Exception as exc:
+        ok = False
+        error = str(exc)
+    check = {
+        "name": name,
+        "ok": ok,
+        "status": result["status"],
+        "preview": _json_preview(result["body"]),
+    }
+    if error:
+        check["error"] = error
+    return check
+
+
+def _api_check_status(name: str, call, expected_status: int) -> dict:
+    result = call()
+    return {
+        "name": name,
+        "ok": result["status"] == expected_status,
+        "status": result["status"],
+        "preview": _json_preview(result["body"]),
+    }
+
+
+def _json_preview(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False)[:300]
 
 
 def _platform_label() -> str:

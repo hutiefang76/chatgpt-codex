@@ -121,6 +121,8 @@ AI-native 管理：
 - 用 `chatgpt-codex ai-commands` 获取本地命令目录。
 - Use `chatgpt-codex set-public-url <url>` after a tunnel or custom route gives the final public URL.
 - 隧道或自定义入口给出最终公网 URL 后，用 `chatgpt-codex set-public-url <url>` 保存。
+- Use `chatgpt-codex api-smoke` before browser work to test Action interfaces directly in temporary workspaces.
+- 浏览器操作前用 `chatgpt-codex api-smoke` 在临时工作区直接测试 Action 接口。
 - Use `chatgpt-codex verify` for the final health/schema/read-only action check.
 - 用 `chatgpt-codex verify` 做最终健康检查、schema 和只读 Action 验证。
 - `status` reports whether a token exists but never prints the bearer token itself.
@@ -279,6 +281,7 @@ Preferred AI-native verification:
 优先使用 AI-native 验证：
 
 ```bash
+chatgpt-codex api-smoke
 chatgpt-codex verify
 ```
 

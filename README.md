@@ -175,6 +175,7 @@ Agent 应优先使用机器可读命令：
 ```bash
 chatgpt-codex status
 chatgpt-codex ai-commands
+chatgpt-codex api-smoke
 chatgpt-codex set-public-url https://your-current-public-url
 chatgpt-codex verify
 ```
@@ -186,6 +187,10 @@ chatgpt-codex verify
 `ai-commands` prints the local command catalog for setup, inspection, workspace switching, Builder fields, and runtime.
 
 `ai-commands` 会打印本地命令目录，覆盖配置、检查、工作区切换、Builder 字段和运行时。
+
+`api-smoke` starts a temporary local server and tests the Action interfaces directly: auth, health, schema, workspace status, workspace listing, file list/read/write/search/patch, command execution, workspace switching, and safety blocks. It does not touch your real workspace.
+
+`api-smoke` 会启动一个临时本地服务，直接测试 Action 接口：鉴权、健康检查、schema、工作区状态、工作区列表、文件列表/读取/写入/搜索/补丁、命令执行、工作区切换和安全拦截。它不会触碰你的真实 workspace。
 
 When a temporary tunnel prints a new public URL, save it with `set-public-url` so OpenAPI and Builder fields stay aligned. Use `verify` after the server and public route are running.
 
@@ -201,7 +206,7 @@ Closed-loop product flow:
 4. Start the local server.
 5. Start or provide a public HTTPS route.
 6. Save the final public URL with `set-public-url`.
-7. Run `verify`.
+7. Run `api-smoke` for direct interface testing, then `verify` against the running route.
 8. Configure ChatGPT Builder with `gpt-instructions`, `openapi.json`, and `token`.
 9. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
 
@@ -213,7 +218,7 @@ Closed-loop product flow:
 4. 启动本地服务。
 5. 启动或提供公网 HTTPS 入口。
 6. 用 `set-public-url` 保存最终公网 URL。
-7. 运行 `verify`。
+7. 先运行 `api-smoke` 做直接接口测试，再对运行中的入口运行 `verify`。
 8. 用 `gpt-instructions`、`openapi.json` 和 `token` 配置 ChatGPT Builder。
 9. 在 GPT 对话里，文件或命令操作前使用 `workspace_status`、`list_workspaces` 和 `switch_workspace`。
 
@@ -325,6 +330,7 @@ After the public URL is known:
 拿到公网 URL 后：
 
 ```bash
+chatgpt-codex api-smoke
 chatgpt-codex set-public-url https://your-current-public-url
 chatgpt-codex verify
 ```

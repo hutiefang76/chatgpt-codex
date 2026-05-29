@@ -24,6 +24,8 @@ By the end, the user should have:
 - 可直接粘贴到 ChatGPT Builder 的配置字段；
 - a verified read-only Action call.
 - 一个验证通过的只读 Action 调用。
+- direct interface smoke results from temporary workspaces.
+- 临时工作区的直接接口冒烟测试结果。
 
 ## Ask First / 先问用户
 
@@ -140,6 +142,7 @@ Verify these before saying setup is complete:
 确认完成前必须验证：
 
 ```bash
+chatgpt-codex api-smoke
 curl --noproxy '*' "$PUBLIC_BASE_URL/health"
 curl --noproxy '*' "$PUBLIC_BASE_URL/openapi.json"
 ```

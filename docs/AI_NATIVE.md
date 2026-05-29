@@ -74,6 +74,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 只有在用户授权浏览器自动化并手动登录后，才用 `chatgpt-codex open-chatgpt` 打开 ChatGPT Builder。
 - Ensure GPT instructions mention `workspace_status`, `list_workspaces`, and `switch_workspace` for showing and switching the current local directory.
 - 确保 GPT Instructions 写明用 `workspace_status`、`list_workspaces` 和 `switch_workspace` 显示并切换当前本地目录。
+- Run `chatgpt-codex api-smoke` before browser work to test the Action interfaces directly in temporary workspaces.
+- 浏览器操作前运行 `chatgpt-codex api-smoke`，在临时工作区里直接测试 Action 接口。
 - Verify `/health`, `/openapi.json`, and one authenticated read-only action.
 - 验证 `/health`、`/openapi.json` 和一个带鉴权的只读 Action。
 - Prefer `chatgpt-codex verify` for machine-readable final verification.
