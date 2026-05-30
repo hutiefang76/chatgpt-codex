@@ -74,6 +74,24 @@ def main(argv=None) -> int:
     serve_parser.add_argument("--port", type=int, default=None)
     serve_parser.add_argument("--ttl-minutes", type=int, default=0, help="Set an access expiry when starting the server. / 启动服务时设置访问过期分钟数。")
 
+    channel_parser = subcommands.add_parser("channel", help="Register, renew, revoke, or inspect the ChatGPT Action channel. / 注册、续期、撤销或查看 ChatGPT Action 通道。")
+    channel_subcommands = channel_parser.add_subparsers(dest="channel_command", required=True)
+    channel_status = channel_subcommands.add_parser("status", help="Show channel status without printing the token. / 显示通道状态，不打印 token。")
+    channel_status.add_argument("--show-paths", action="store_true", help="Include storage paths. / 显示存储路径。")
+    channel_register = channel_subcommands.add_parser("register", help="Create the channel config for one machine and one authorized workspace. / 为当前机器和一个授权工作区创建通道配置。")
+    channel_register.add_argument("--workspace", required=True, help="Workspace ChatGPT may access. / ChatGPT 可访问的工作区。")
+    channel_register.add_argument("--workspace-name", default="", help="Name for this workspace. / 这个工作区的名称。")
+    channel_register.add_argument("--public-base-url", required=True, help="Public HTTPS base URL. / 公网 HTTPS 根地址。")
+    channel_register.add_argument("--host", default="127.0.0.1")
+    channel_register.add_argument("--port", type=int, default=8766)
+    channel_register.add_argument("--ttl-minutes", type=int, default=0, help="Optional short-lived access TTL. / 可选短时访问分钟数。")
+    channel_register.add_argument("--force", action="store_true")
+    channel_renew = channel_subcommands.add_parser("renew", help="Reactivate the channel and print the current token for Builder. / 重新激活通道并打印当前 Builder token。")
+    channel_renew.add_argument("--public-base-url", default="", help="Optional updated public HTTPS base URL. / 可选更新公网 HTTPS 根地址。")
+    channel_renew.add_argument("--ttl-minutes", type=int, default=0, help="Optional short-lived access TTL. Without it, access has no expiry. / 可选短时访问分钟数；不提供则不过期。")
+    channel_renew.add_argument("--rotate-token", action="store_true", help="Rotate token before renewing. / 续期前轮换 token。")
+    channel_subcommands.add_parser("revoke", help="Immediately disable the channel and rotate token without printing it. / 立即停用通道并轮换 token 但不打印。")
+
     access_parser = subcommands.add_parser("access", help="Manage access session expiry. / 管理访问会话过期时间。")
     access_subcommands = access_parser.add_subparsers(dest="access_command", required=True)
     access_subcommands.add_parser("status", help="Show access session status without printing the token. / 显示访问会话状态，不打印 token。")
@@ -194,6 +212,12 @@ def main(argv=None) -> int:
         result = _api_smoke(args.timeout)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0 if result["ok"] else 1
+    if args.command == "channel":
+        if args.channel_command == "status":
+            print(json.dumps(_channel_status(cfg_path, include_paths=args.show_paths), indent=2, ensure_ascii=False))
+            return 0
+        if args.channel_command == "register":
+            return _channel_register(args, cfg_path)
 
     config = load_config(cfg_path)
 
@@ -226,6 +250,8 @@ def main(argv=None) -> int:
         return 0 if result["ok"] else 1
     if args.command == "access":
         return _access_command(args, config, cfg_path)
+    if args.command == "channel":
+        return _channel_command(args, config, cfg_path)
     if args.command == "workspace":
         return _workspace_command(args, config, cfg_path)
     if args.command == "serve":
@@ -328,6 +354,7 @@ def _management_status(cfg_path: Path) -> dict:
 def _ai_command_catalog() -> dict:
     return {
         "setup": [
+            "chatgpt-codex channel register --workspace <path> --public-base-url <url>",
             "chatgpt-codex init --workspace <path> --workspace-name <name> --public-base-url <url>",
             "chatgpt-codex authorize --workspace <path> --operating-system auto --access-plan <plan> --public-base-url <url>",
             "chatgpt-codex permissions-template --output .chatgpt-codex/permissions.json",
@@ -343,6 +370,8 @@ def _ai_command_catalog() -> dict:
             "chatgpt-codex route-options",
             "chatgpt-codex workspace status",
             "chatgpt-codex workspace list",
+            "chatgpt-codex channel status",
+            "chatgpt-codex channel status --show-paths",
         ],
         "routing": [
             "chatgpt-codex set-public-url <url>",
@@ -364,6 +393,10 @@ def _ai_command_catalog() -> dict:
             "chatgpt-codex tunnel",
         ],
         "access": [
+            "chatgpt-codex channel renew",
+            "chatgpt-codex channel renew --public-base-url <url>",
+            "chatgpt-codex channel renew --ttl-minutes <minutes>",
+            "chatgpt-codex channel revoke",
             "chatgpt-codex access grant --ttl-minutes <minutes>",
             "chatgpt-codex access grant --ttl-minutes <minutes> --rotate-token",
             "chatgpt-codex access revoke",
@@ -373,11 +406,108 @@ def _ai_command_catalog() -> dict:
             "status and ai-commands are machine-readable JSON",
             "status reports token_configured but never prints the bearer token",
             "normal personal-use access does not expire unless a TTL is explicitly set",
-            "rotate-token is the only management command that prints a new bearer token",
-            "access revoke expires the current session and rotates the token without printing it",
+            "channel status never prints the bearer token",
+            "channel register and channel renew print a bearer token for ChatGPT Builder",
+            "channel revoke expires the current session and rotates the token without printing it",
             "workspace switching is limited to registered workspace names",
         ],
     }
+
+
+def _channel_register(args, cfg_path: Path) -> int:
+    workspace_path = Path(args.workspace).expanduser().resolve()
+    workspace_name = args.workspace_name or workspace_path.name or "default"
+    config = AppConfig(
+        token=generate_token(),
+        workspaces={workspace_name: workspace_path},
+        active_workspace=workspace_name,
+        host=args.host,
+        port=args.port,
+        public_base_url=args.public_base_url.rstrip("/"),
+    )
+    if args.ttl_minutes:
+        config.grant_access(args.ttl_minutes)
+    save_config(config, cfg_path, overwrite=args.force)
+    print(json.dumps(_channel_payload(config, cfg_path, include_token=True), indent=2, ensure_ascii=False))
+    return 0
+
+
+def _channel_command(args, config: AppConfig, cfg_path: Path) -> int:
+    if args.channel_command == "renew":
+        if args.public_base_url:
+            config.public_base_url = args.public_base_url.rstrip("/")
+        if args.rotate_token:
+            config.token = generate_token()
+        if args.ttl_minutes:
+            config.grant_access(args.ttl_minutes)
+        else:
+            config.access_expires_at = ""
+        save_config(config, cfg_path, overwrite=True)
+        print(json.dumps(_channel_payload(config, cfg_path, include_token=True), indent=2, ensure_ascii=False))
+        return 0
+    if args.channel_command == "revoke":
+        access = config.revoke_access()
+        config.token = generate_token()
+        save_config(config, cfg_path, overwrite=True)
+        print(
+            json.dumps(
+                {
+                    "registered": True,
+                    "active": False,
+                    "config_path": str(cfg_path),
+                    "public_base_url": config.public_base_url.rstrip("/"),
+                    "active_workspace": config.active_workspace,
+                    "workspace": str(config.workspace),
+                    "access": access,
+                    "token_rotated": True,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    return 2
+
+
+def _channel_status(cfg_path: Path, include_paths: bool = False) -> dict:
+    if not cfg_path.exists():
+        result = {"registered": False, "token_configured": False}
+        if include_paths:
+            result["config_path"] = str(cfg_path)
+        return result
+    config = load_config(cfg_path)
+    result = {
+        "registered": True,
+        "active": bool(config.access_status()["active"]),
+        "public_base_url": config.public_base_url.rstrip("/"),
+        "openapi_url": f"{config.public_base_url.rstrip('/')}/openapi.json",
+        "active_workspace": config.active_workspace,
+        "workspace": str(config.workspace),
+        "token_configured": bool(config.token),
+        "access": config.access_status(),
+    }
+    if include_paths:
+        result["config_path"] = str(cfg_path)
+        result["storage"] = "local .chatgpt-codex/config.json, ignored by Git and chmod 600 on macOS/Linux"
+    return result
+
+
+def _channel_payload(config: AppConfig, cfg_path: Path, include_token: bool = False) -> dict:
+    payload = {
+        "registered": True,
+        "active": bool(config.access_status()["active"]),
+        "config_path": str(cfg_path),
+        "public_base_url": config.public_base_url.rstrip("/"),
+        "openapi_url": f"{config.public_base_url.rstrip('/')}/openapi.json",
+        "active_workspace": config.active_workspace,
+        "workspace": str(config.workspace),
+        "access": config.access_status(),
+        "token_configured": bool(config.token),
+        "storage": "local .chatgpt-codex/config.json, ignored by Git and chmod 600 on macOS/Linux",
+    }
+    if include_token:
+        payload["token"] = config.token
+    return payload
 
 
 def _access_command(args, config: AppConfig, cfg_path: Path) -> int:
@@ -788,8 +918,8 @@ Agent mission / Agent 任务：
    安装本地启动器。
 3. Save setup choices and permissions in .chatgpt-codex/permissions.json.
    将配置选项和授权保存到 .chatgpt-codex/permissions.json。
-4. Create config for the target workspace.
-   为目标 workspace 创建配置。
+4. Register the channel for the target workspace.
+   为目标 workspace 注册通道。
 5. Start the local server. If ChatGPT web should call it, set up or use a public HTTPS route.
    启动本地服务。如果 ChatGPT 网页端需要调用它，请配置或使用公网 HTTPS 入口。
 6. Open ChatGPT Builder in Chrome only after browser automation is approved and the user has logged in manually.
@@ -839,7 +969,7 @@ chatgpt-codex authorize \\
   --allow-install-helpers \\
   --allow-workspace-write \\
   --allow-command-execution
-chatgpt-codex init --workspace "$WORKSPACE" --public-base-url "$PUBLIC_BASE_URL"
+chatgpt-codex channel register --workspace "$WORKSPACE" --public-base-url "$PUBLIC_BASE_URL"
 chatgpt-codex doctor
 chatgpt-codex serve
 ```
@@ -861,7 +991,7 @@ chatgpt-codex authorize `
   --allow-install-helpers `
   --allow-workspace-write `
   --allow-command-execution
-chatgpt-codex init --workspace "$Workspace" --public-base-url "$PublicBaseUrl"
+chatgpt-codex channel register --workspace "$Workspace" --public-base-url "$PublicBaseUrl"
 chatgpt-codex doctor
 chatgpt-codex serve
 ```

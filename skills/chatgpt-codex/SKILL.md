@@ -49,8 +49,8 @@ The setup is complete only when all of these are true:
 - agent 可以读取 `chatgpt-codex status`；
 - local server is running;
 - 本地服务已运行；
-- final public URL is saved with `chatgpt-codex set-public-url`;
-- 最终公网 URL 已用 `chatgpt-codex set-public-url` 保存；
+- final public URL is saved with `chatgpt-codex channel renew --public-base-url`;
+- 最终公网 URL 已用 `chatgpt-codex channel renew --public-base-url` 保存；
 - `chatgpt-codex verify` passes;
 - `chatgpt-codex verify` 通过；
 - ChatGPT Builder has the current schema URL and bearer token;
@@ -119,14 +119,16 @@ AI-native 管理：
 - 先运行 `chatgpt-codex status` 读取机器可读的本地状态。
 - Use `chatgpt-codex ai-commands` to discover the local command catalog.
 - 用 `chatgpt-codex ai-commands` 获取本地命令目录。
-- Use `chatgpt-codex set-public-url <url>` after a tunnel or custom route gives the final public URL.
-- 隧道或自定义入口给出最终公网 URL 后，用 `chatgpt-codex set-public-url <url>` 保存。
+- Use `chatgpt-codex channel register --workspace <path> --public-base-url <url>` for first registration. It stores the public URL and token in `.chatgpt-codex/config.json` under the local repository root.
+- 首次注册通道时使用 `chatgpt-codex channel register --workspace <path> --public-base-url <url>`。它会把公网 URL 和 token 存在本地仓库根目录的 `.chatgpt-codex/config.json`。
+- Use `chatgpt-codex channel renew --public-base-url <url>` after a tunnel or custom route gives the final public URL.
+- 隧道或自定义入口给出最终公网 URL 后，用 `chatgpt-codex channel renew --public-base-url <url>` 保存。
 - Use `chatgpt-codex api-smoke` before browser work to test Action interfaces directly in temporary workspaces.
 - 浏览器操作前用 `chatgpt-codex api-smoke` 在临时工作区直接测试 Action 接口。
 - Use `chatgpt-codex serve` for normal personal use. Do not add a TTL unless the user explicitly wants a short-lived session.
 - 普通个人自用时使用 `chatgpt-codex serve`。除非用户明确需要短时会话，否则不要添加 TTL。
-- Use `chatgpt-codex rotate-token` when the ChatGPT Builder auth field must be refreshed, and `chatgpt-codex access revoke` when exposure should stop immediately.
-- 需要刷新 ChatGPT Builder 鉴权字段时用 `chatgpt-codex rotate-token`，需要立即停止暴露时用 `chatgpt-codex access revoke`。
+- Use `chatgpt-codex channel status` for token-safe inspection, `chatgpt-codex channel revoke` when exposure should stop immediately, and `chatgpt-codex channel renew` to reactivate the channel.
+- 用 `chatgpt-codex channel status` 做不泄露 token 的检查；需要立即停止暴露时用 `chatgpt-codex channel revoke`；需要重新激活时用 `chatgpt-codex channel renew`。
 - Use `chatgpt-codex verify` for the final health/schema/read-only action check.
 - 用 `chatgpt-codex verify` 做最终健康检查、schema 和只读 Action 验证。
 - `status` reports whether a token exists but never prints the bearer token itself.
@@ -169,7 +171,7 @@ chatgpt-codex authorize \
 ```
 
 ```bash
-chatgpt-codex init --workspace "$WORKSPACE" --public-base-url "$PUBLIC_BASE_URL"
+chatgpt-codex channel register --workspace "$WORKSPACE" --public-base-url "$PUBLIC_BASE_URL"
 chatgpt-codex doctor
 ```
 
@@ -193,7 +195,7 @@ Windows PowerShell：
 ```powershell
 $Workspace = "C:\absolute\path\to\project"
 $PublicBaseUrl = "https://actions.example.com"
-chatgpt-codex init --workspace "$Workspace" --public-base-url "$PublicBaseUrl"
+chatgpt-codex channel register --workspace "$Workspace" --public-base-url "$PublicBaseUrl"
 chatgpt-codex doctor
 ```
 
@@ -242,8 +244,8 @@ After the public URL is known:
 拿到公网 URL 后：
 
 ```bash
-chatgpt-codex set-public-url "$PUBLIC_BASE_URL"
-chatgpt-codex access status
+chatgpt-codex channel renew --public-base-url "$PUBLIC_BASE_URL"
+chatgpt-codex channel status
 chatgpt-codex verify
 ```
 
@@ -287,7 +289,7 @@ Preferred AI-native verification:
 
 ```bash
 chatgpt-codex api-smoke
-chatgpt-codex access status
+chatgpt-codex channel status
 chatgpt-codex verify
 ```
 

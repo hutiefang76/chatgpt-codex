@@ -175,9 +175,11 @@ Agent 应优先使用机器可读命令：
 ```bash
 chatgpt-codex status
 chatgpt-codex ai-commands
+chatgpt-codex channel status
 chatgpt-codex api-smoke
 chatgpt-codex access status
 chatgpt-codex set-public-url https://your-current-public-url
+chatgpt-codex channel renew --public-base-url https://your-current-public-url
 chatgpt-codex verify
 ```
 
@@ -193,24 +195,36 @@ chatgpt-codex verify
 
 `api-smoke` 会启动一个临时本地服务，直接测试 Action 接口：鉴权、健康检查、schema、工作区状态、工作区列表、文件列表/读取/写入/搜索/补丁、命令执行、工作区切换和安全拦截。它不会触碰你的真实 workspace。
 
-For personal daily use, leave access without an expiry so long coding sessions and lunch breaks do not interrupt work. `chatgpt-codex access revoke` stops exposure immediately and rotates the token without printing it. `chatgpt-codex rotate-token` prints a new token once for pasting into ChatGPT Builder. `access grant --ttl-minutes <minutes>` is available for demos, borrowed machines, or explicit short-lived sessions.
+`channel register` is the first-time channel registration command. It binds this local tool install to exactly the workspace path you pass, stores `public_base_url` and the generated bearer token in `.chatgpt-codex/config.json` under this repository root, and prints the token once for ChatGPT Builder. `channel status` never prints the token. `channel revoke` disables the channel immediately and rotates the token silently. `channel renew` reactivates it and prints the current token for Builder.
 
-个人日常使用时，默认不设置过期时间，避免长时间写代码或午休后被中断。`chatgpt-codex access revoke` 会立即停止暴露，并轮换 token 但不打印。`chatgpt-codex rotate-token` 会一次性打印新 token，供粘贴到 ChatGPT Builder。`access grant --ttl-minutes <minutes>` 只用于演示、借用机器或明确需要短时会话的场景。
+`channel register` 是首次注册通道命令。它把当前本地工具安装绑定到你传入的指定 workspace 路径，把 `public_base_url` 和生成的 bearer token 存到本仓库根目录下的 `.chatgpt-codex/config.json`，并只为 ChatGPT Builder 打印一次 token。`channel status` 永不打印 token。`channel revoke` 会立即停用通道并静默轮换 token。`channel renew` 会重新激活通道，并打印当前 token 供 Builder 使用。
 
-When a temporary tunnel prints a new public URL, save it with `set-public-url` so OpenAPI and Builder fields stay aligned. Use `verify` after the server and public route are running.
+Keeping the real config under `.chatgpt-codex/` is the normal local-secret pattern here: the directory is ignored by Git, and files are written as private files on macOS/Linux. Do not commit or publish it.
 
-临时隧道输出新的公网 URL 后，用 `set-public-url` 保存，确保 OpenAPI 和 Builder 字段一致。服务和公网入口启动后，用 `verify` 做闭环检查。
+把真实配置放在 `.chatgpt-codex/` 是本项目的正常本地密钥做法：该目录被 Git 忽略，macOS/Linux 上文件会写成私有权限。不要提交或公开它。
+
+Low-level commands are still available for advanced use: `chatgpt-codex rotate-token` prints a new token, and `chatgpt-codex access revoke` expires access and rotates the token without printing it.
+
+底层命令仍保留给高级用法：`chatgpt-codex rotate-token` 会打印新 token，`chatgpt-codex access revoke` 会让访问过期并静默轮换 token。
+
+For personal daily use, leave access without an expiry so long coding sessions and lunch breaks do not interrupt work. `chatgpt-codex channel revoke` stops exposure immediately and rotates the token without printing it. `chatgpt-codex channel renew` reactivates access and prints the current token once for ChatGPT Builder. `access grant --ttl-minutes <minutes>` is available for demos, borrowed machines, or explicit short-lived sessions.
+
+个人日常使用时，默认不设置过期时间，避免长时间写代码或午休后被中断。`chatgpt-codex channel revoke` 会立即停止暴露，并轮换 token 但不打印。`chatgpt-codex channel renew` 会重新激活访问，并一次性打印当前 token 供 ChatGPT Builder 使用。`access grant --ttl-minutes <minutes>` 只用于演示、借用机器或明确需要短时会话的场景。
+
+When a temporary tunnel prints a new public URL, save it with `channel renew --public-base-url <url>` so OpenAPI and Builder fields stay aligned. Use `verify` after the server and public route are running.
+
+临时隧道输出新的公网 URL 后，用 `channel renew --public-base-url <url>` 保存，确保 OpenAPI 和 Builder 字段一致。服务和公网入口启动后，用 `verify` 做闭环检查。
 
 Closed-loop product flow:
 
 产品闭环流程：
 
 1. Collect minimal human inputs and local authorization.
-2. Install and create `.chatgpt-codex/config.json`.
+2. Install and run `channel register` to create `.chatgpt-codex/config.json`.
 3. Register authorized workspaces and select `active_workspace`.
 4. Start the local server.
 5. Start or provide a public HTTPS route.
-6. Save the final public URL with `set-public-url`.
+6. Save the final public URL with `channel renew --public-base-url <url>` or `set-public-url`.
 7. Run `api-smoke` for direct interface testing, then `verify` against the running route.
 8. Configure ChatGPT Builder with `gpt-instructions`, `openapi.json`, and `token`.
 9. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
@@ -218,11 +232,11 @@ Closed-loop product flow:
 中文：
 
 1. 收集真人最小输入和本地授权。
-2. 安装并创建 `.chatgpt-codex/config.json`。
+2. 安装并运行 `channel register` 创建 `.chatgpt-codex/config.json`。
 3. 登记已授权工作区并选择 `active_workspace`。
 4. 启动本地服务。
 5. 启动或提供公网 HTTPS 入口。
-6. 用 `set-public-url` 保存最终公网 URL。
+6. 用 `channel renew --public-base-url <url>` 或 `set-public-url` 保存最终公网 URL。
 7. 先运行 `api-smoke` 做直接接口测试，再对运行中的入口运行 `verify`。
 8. 用 `gpt-instructions`、`openapi.json` 和 `token` 配置 ChatGPT Builder。
 9. 在 GPT 对话里，文件或命令操作前使用 `workspace_status`、`list_workspaces` 和 `switch_workspace`。
@@ -253,9 +267,9 @@ The install script creates `.venv/` and a local `chatgpt-codex` launcher. It doe
 
 安装脚本会创建 `.venv/` 和本地 `chatgpt-codex` 启动器，不安装任何运行时第三方依赖。
 
-Initialize a local config:
+Register the channel:
 
-初始化本地配置：
+注册通道：
 
 macOS Terminal:
 
@@ -263,7 +277,7 @@ macOS 终端：
 
 ```bash
 . .venv/bin/activate
-chatgpt-codex init \
+chatgpt-codex channel register \
   --workspace /absolute/path/to/your/project \
   --public-base-url https://chatgpt-codex.example.com
 ```
@@ -274,7 +288,7 @@ Windows PowerShell：
 
 ```powershell
 . .\.venv\Scripts\Activate.ps1
-chatgpt-codex init `
+chatgpt-codex channel register `
   --workspace "C:\absolute\path\to\your\project" `
   --public-base-url https://chatgpt-codex.example.com
 ```
@@ -291,9 +305,9 @@ Start the local server:
 chatgpt-codex serve
 ```
 
-By default, access stays active until the server is stopped or `chatgpt-codex access revoke` is run. This is the recommended personal-use mode. If you intentionally want a short-lived session, start with `chatgpt-codex serve --ttl-minutes 120`; with `--ttl-minutes`, POST Actions return `403` after expiry even if the process and tunnel are still running.
+By default, access stays active until the server is stopped or `chatgpt-codex channel revoke` is run. This is the recommended personal-use mode. If you intentionally want a short-lived session, start with `chatgpt-codex serve --ttl-minutes 120`; with `--ttl-minutes`, POST Actions return `403` after expiry even if the process and tunnel are still running.
 
-默认情况下，访问会一直有效，直到服务停止或运行 `chatgpt-codex access revoke`。这是推荐的个人自用模式。如果你明确想使用短时会话，可以用 `chatgpt-codex serve --ttl-minutes 120` 启动；加上 `--ttl-minutes` 后，即使进程和隧道还在，过期后 POST Actions 也会返回 `403`。
+默认情况下，访问会一直有效，直到服务停止或运行 `chatgpt-codex channel revoke`。这是推荐的个人自用模式。如果你明确想使用短时会话，可以用 `chatgpt-codex serve --ttl-minutes 120` 启动；加上 `--ttl-minutes` 后，即使进程和隧道还在，过期后 POST Actions 也会返回 `403`。
 
 ### Switching Projects In GPT / 在 GPT 里切换项目
 
@@ -340,8 +354,8 @@ After the public URL is known:
 
 ```bash
 chatgpt-codex api-smoke
-chatgpt-codex set-public-url https://your-current-public-url
-chatgpt-codex access status
+chatgpt-codex channel renew --public-base-url https://your-current-public-url
+chatgpt-codex channel status
 chatgpt-codex verify
 ```
 
@@ -463,6 +477,8 @@ Built-in guardrails:
 
 - All file paths must stay inside the configured workspace.
 - 所有文件路径必须位于配置的 workspace 内。
+- Channel registration binds the tool to the specific workspace path recorded in `.chatgpt-codex/config.json`.
+- 通道注册会把工具绑定到 `.chatgpt-codex/config.json` 中记录的指定 workspace 路径。
 - Project switching is limited to workspaces registered in `.chatgpt-codex/config.json`.
 - 项目切换仅限 `.chatgpt-codex/config.json` 中登记过的工作区。
 - Hidden implementation state such as `.git`, `.venv`, `node_modules`, and caches are skipped by file listing and search.
@@ -475,8 +491,8 @@ Built-in guardrails:
 - 个人自用模式默认不过期。如需可选过期，可使用 `serve --ttl-minutes` 或 `access grant --ttl-minutes`。
 - `rotate-token` changes the bearer token; a running server reloads the token from config before each Action.
 - `rotate-token` 会更换 bearer token；运行中的服务会在每次 Action 前从配置重新读取 token。
-- `access revoke` immediately expires access and rotates the token without printing the new secret.
-- `access revoke` 会立即让访问过期，并轮换 token 但不打印新密钥。
+- `channel revoke` immediately expires access and rotates the token without printing the new secret; `channel renew` reactivates access and prints the token for Builder.
+- `channel revoke` 会立即让访问过期，并轮换 token 但不打印新密钥；`channel renew` 会重新激活访问，并打印供 Builder 使用的 token。
 - Commands like `rm -rf`, `git reset --hard`, `sudo`, `reboot`, `mkfs`, and similar destructive operations are blocked.
 - 默认拦截 `rm -rf`、`git reset --hard`、`sudo`、`reboot`、`mkfs` 等危险操作。
 - The project never needs your ChatGPT password, cookies, or API key.

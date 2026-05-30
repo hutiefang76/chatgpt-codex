@@ -46,8 +46,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 已在 `.chatgpt-codex/permissions.json` 保存配置选项。
 - If manual editing is preferred, root `permissions.example.json` copied with the OS helper script.
 - 如果偏好手工编辑，已用对应操作系统辅助脚本复制根目录的 `permissions.example.json`。
-- Config created under `.chatgpt-codex/config.json`.
-- 已在 `.chatgpt-codex/config.json` 创建配置。
+- Channel registered with `chatgpt-codex channel register`, creating `.chatgpt-codex/config.json` with the workspace path, public URL, and token.
+- 已用 `chatgpt-codex channel register` 注册通道，在 `.chatgpt-codex/config.json` 中写入 workspace 路径、公网 URL 和 token。
 - Machine-readable local state checked with `chatgpt-codex status` and command catalog checked with `chatgpt-codex ai-commands`.
 - 已用 `chatgpt-codex status` 检查机器可读本地状态，并用 `chatgpt-codex ai-commands` 检查命令目录。
 - Extra projects registered with `chatgpt-codex workspace add` when the user provides more authorized workspaces.
@@ -56,10 +56,10 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 已用 `chatgpt-codex serve` 启动本地服务。
 - Public HTTPS route available when ChatGPT web access is required.
 - 需要 ChatGPT 网页端访问时，公网 HTTPS 路由可用。
-- Final public URL saved with `chatgpt-codex set-public-url`.
-- 已用 `chatgpt-codex set-public-url` 保存最终公网 URL。
-- Access status checked with `chatgpt-codex access status`.
-- 已用 `chatgpt-codex access status` 检查访问状态。
+- Final public URL saved with `chatgpt-codex channel renew --public-base-url`.
+- 已用 `chatgpt-codex channel renew --public-base-url` 保存最终公网 URL。
+- Channel status checked with `chatgpt-codex channel status`.
+- 已用 `chatgpt-codex channel status` 检查通道状态。
 - Temporary tunnel used by default; fixed hostname `chatgpt-codex.<domain>` used when Cloudflare login and domain are available.
 - 默认使用临时隧道；当 Cloudflare 登录和域名都具备时，使用固定域名 `chatgpt-codex.<domain>`。
 - `/health` works.

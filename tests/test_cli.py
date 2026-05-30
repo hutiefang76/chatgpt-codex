@@ -207,10 +207,79 @@ class CliTests(unittest.TestCase):
         self.assertIn("chatgpt-codex status", catalog["inspect"])
         self.assertIn("chatgpt-codex access status", catalog["inspect"])
         self.assertIn("chatgpt-codex set-public-url <url>", catalog["routing"])
+        self.assertIn("chatgpt-codex channel register --workspace <path> --public-base-url <url>", catalog["setup"])
+        self.assertIn("chatgpt-codex channel status", catalog["inspect"])
+        self.assertIn("chatgpt-codex channel renew", catalog["access"])
+        self.assertIn("chatgpt-codex channel revoke", catalog["access"])
         self.assertIn("chatgpt-codex verify", catalog["inspect"])
         self.assertIn("chatgpt-codex api-smoke", catalog["inspect"])
         self.assertIn("chatgpt-codex access revoke", catalog["access"])
         self.assertIn("chatgpt-codex token", catalog["chatgpt_builder"])
+
+    def test_channel_register_status_revoke_and_renew(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "channel",
+                        "register",
+                        "--workspace",
+                        str(workspace),
+                        "--workspace-name",
+                        "demo",
+                        "--public-base-url",
+                        "https://actions.example.com/",
+                    ]
+                )
+            registered = json.loads(stdout.getvalue())
+            config = load_config(config_path)
+            first_token = config.token
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(registered["registered"])
+            self.assertTrue(registered["active"])
+            self.assertEqual(registered["token"], first_token)
+            self.assertEqual(registered["public_base_url"], "https://actions.example.com")
+            self.assertEqual(config.workspace, workspace.resolve())
+            self.assertEqual(config.active_workspace, "demo")
+            self.assertEqual(config.access_status()["mode"], "no_expiry")
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "channel", "status"])
+            status = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(status["registered"])
+            self.assertTrue(status["token_configured"])
+            self.assertNotIn(first_token, stdout.getvalue())
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "channel", "revoke"])
+            revoked = json.loads(stdout.getvalue())
+            revoked_config = load_config(config_path)
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(revoked["active"])
+            self.assertTrue(revoked["token_rotated"])
+            self.assertNotEqual(revoked_config.token, first_token)
+            self.assertNotIn(revoked_config.token, stdout.getvalue())
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "channel", "renew", "--public-base-url", "https://fresh.example.com"])
+            renewed = json.loads(stdout.getvalue())
+            renewed_config = load_config(config_path)
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(renewed["active"])
+            self.assertEqual(renewed["token"], renewed_config.token)
+            self.assertEqual(renewed["public_base_url"], "https://fresh.example.com")
+            self.assertEqual(renewed_config.access_status()["mode"], "no_expiry")
 
     def test_api_smoke_exercises_action_interfaces_without_existing_config(self):
         stdout = io.StringIO()

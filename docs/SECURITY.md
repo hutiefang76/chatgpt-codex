@@ -23,9 +23,10 @@ ChatGPT Codex 会通过 HTTP Actions 暴露本地 workspace。推荐的个人自
 ## Recommended Commands / 推荐命令
 
 ```bash
+chatgpt-codex channel register --workspace /absolute/path/to/project --public-base-url https://your-url.example.com
+chatgpt-codex channel status
 chatgpt-codex serve
 chatgpt-codex tunnel
-chatgpt-codex access status
 chatgpt-codex api-smoke
 chatgpt-codex verify
 ```
@@ -43,7 +44,7 @@ Refresh the token when needed:
 需要刷新 token 时：
 
 ```bash
-chatgpt-codex rotate-token
+chatgpt-codex channel renew --rotate-token
 ```
 
 Stop exposure immediately:
@@ -51,18 +52,18 @@ Stop exposure immediately:
 需要立即停止暴露时：
 
 ```bash
-chatgpt-codex access revoke
+chatgpt-codex channel revoke
 ```
 
-`access revoke` expires the current access session and rotates the token without printing the new token. Use `rotate-token` when you intentionally need a new token for ChatGPT Builder.
+`channel revoke` expires the current access session and rotates the token without printing the new token. Use `channel renew` when you intentionally need to reactivate the channel and print the current token for ChatGPT Builder.
 
-`access revoke` 会让当前访问会话立即过期，并轮换 token 但不打印新 token。只有在你确实需要更新 ChatGPT Builder 鉴权字段时，才使用 `rotate-token`。
+`channel revoke` 会让当前访问会话立即过期，并轮换 token 但不打印新 token。只有在你确实需要重新激活通道并把当前 token 填到 ChatGPT Builder 时，才使用 `channel renew`。
 
 ## Duration / 有效期
 
-The local server is reachable while its process is running. A temporary tunnel is reachable while its process is running and usually gets a new URL after restart. A custom HTTPS route can stay stable, but Actions still require the current bearer token. If no TTL is configured, the access session is active until you stop the service or run `chatgpt-codex access revoke`.
+The local server is reachable while its process is running. A temporary tunnel is reachable while its process is running and usually gets a new URL after restart. A custom HTTPS route can stay stable, but Actions still require the current bearer token. If no TTL is configured, the access session is active until you stop the service or run `chatgpt-codex channel revoke`.
 
-本地服务在进程运行期间可达。临时隧道在进程运行期间可达，重启后通常会得到新 URL。自定义 HTTPS 入口可以保持稳定，但 Action 仍然需要当前 bearer token。如果未配置 TTL，访问会话会一直有效，直到你停止服务或运行 `chatgpt-codex access revoke`。
+本地服务在进程运行期间可达。临时隧道在进程运行期间可达，重启后通常会得到新 URL。自定义 HTTPS 入口可以保持稳定，但 Action 仍然需要当前 bearer token。如果未配置 TTL，访问会话会一直有效，直到你停止服务或运行 `chatgpt-codex channel revoke`。
 
 With `--ttl-minutes`, POST Actions return `403` after expiry even if the server and tunnel are still running. Public GET endpoints such as `/health`, `/openapi.json`, and `/privacy` remain readable because ChatGPT Builder needs them for setup.
 
@@ -70,9 +71,9 @@ With `--ttl-minutes`, POST Actions return `403` after expiry even if the server 
 
 ## Token Handling / Token 处理
 
-The token is stored in `.chatgpt-codex/config.json`, which is ignored by Git. `status`, `doctor`, and `access status` do not print the token. `token` and `rotate-token` are intentionally explicit commands because their output must be pasted into ChatGPT Builder.
+The public URL, registered workspace paths, and token are stored in `.chatgpt-codex/config.json` under the local repository root. This is normal for this project because `.chatgpt-codex/` is ignored by Git and config files are written as private files on macOS/Linux. `status`, `doctor`, `channel status`, and `access status` do not print the token. `channel register`, `channel renew`, `token`, and `rotate-token` are intentionally explicit commands because their output may need to be pasted into ChatGPT Builder.
 
-token 存在 `.chatgpt-codex/config.json`，该文件会被 Git 忽略。`status`、`doctor` 和 `access status` 不打印 token。`token` 和 `rotate-token` 是有意设计的显式命令，因为它们的输出需要粘贴到 ChatGPT Builder。
+公网 URL、已注册 workspace 路径和 token 存在本地仓库根目录的 `.chatgpt-codex/config.json`。这是本项目的正常做法，因为 `.chatgpt-codex/` 会被 Git 忽略，macOS/Linux 上配置文件会写成私有权限。`status`、`doctor`、`channel status` 和 `access status` 不打印 token。`channel register`、`channel renew`、`token` 和 `rotate-token` 是有意设计的显式命令，因为它们的输出可能需要粘贴到 ChatGPT Builder。
 
 Knowing the tunnel URL is not enough to operate the workspace. All POST Actions require `Authorization: Bearer <token>`. A random visitor with only the URL can read setup metadata such as `/openapi.json`, but cannot list files, read files, write files, switch projects, patch files, search text, or run commands.
 

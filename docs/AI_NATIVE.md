@@ -52,12 +52,12 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 修改本地状态前只收集真人必须提供的最小信息。
 - Run `./scripts/install.sh` on macOS or `.\scripts\install.ps1` on Windows PowerShell.
 - macOS 运行 `./scripts/install.sh`；Windows PowerShell 运行 `.\scripts\install.ps1`。
-- Run `chatgpt-codex init`.
-- 运行 `chatgpt-codex init`。
+- Run `chatgpt-codex channel register --workspace <path> --public-base-url <url>` for the first channel registration.
+- 首次注册通道时运行 `chatgpt-codex channel register --workspace <path> --public-base-url <url>`。
 - Use `chatgpt-codex status` and `chatgpt-codex ai-commands` for machine-readable local management.
 - 使用 `chatgpt-codex status` 和 `chatgpt-codex ai-commands` 做机器可读的本地管理。
-- After a tunnel or route provides the final URL, run `chatgpt-codex set-public-url <url>`.
-- 隧道或入口给出最终 URL 后，运行 `chatgpt-codex set-public-url <url>`。
+- After a tunnel or route provides the final URL, run `chatgpt-codex channel renew --public-base-url <url>` or `chatgpt-codex set-public-url <url>`.
+- 隧道或入口给出最终 URL 后，运行 `chatgpt-codex channel renew --public-base-url <url>` 或 `chatgpt-codex set-public-url <url>`。
 - Add extra authorized projects with `chatgpt-codex workspace add --name <name> --path <path>`.
 - 用 `chatgpt-codex workspace add --name <name> --path <path>` 添加额外已授权项目。
 - Run `chatgpt-codex route-options` and `chatgpt-codex authorize` to save choices in `.chatgpt-codex/permissions.json`.
@@ -76,8 +76,10 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 确保 GPT Instructions 写明用 `workspace_status`、`list_workspaces` 和 `switch_workspace` 显示并切换当前本地目录。
 - Run `chatgpt-codex api-smoke` before browser work to test the Action interfaces directly in temporary workspaces.
 - 浏览器操作前运行 `chatgpt-codex api-smoke`，在临时工作区里直接测试 Action 接口。
-- Use `chatgpt-codex rotate-token` to refresh Builder auth, and `chatgpt-codex access revoke` to expire access immediately.
-- 用 `chatgpt-codex rotate-token` 刷新 Builder 鉴权，用 `chatgpt-codex access revoke` 立即让访问过期。
+- Use `chatgpt-codex channel status` to inspect registration without leaking the token. Use `chatgpt-codex channel revoke` to disable the channel, and `chatgpt-codex channel renew` to reactivate it.
+- 用 `chatgpt-codex channel status` 查看注册状态且不泄露 token。用 `chatgpt-codex channel revoke` 停用通道，用 `chatgpt-codex channel renew` 重新激活。
+- Use `chatgpt-codex rotate-token` only when Builder auth must be refreshed manually.
+- 只有在需要手动刷新 Builder 鉴权时才用 `chatgpt-codex rotate-token`。
 - Verify `/health`, `/openapi.json`, and one authenticated read-only action.
 - 验证 `/health`、`/openapi.json` 和一个带鉴权的只读 Action。
 - Prefer `chatgpt-codex verify` for machine-readable final verification.

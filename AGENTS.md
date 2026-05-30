@@ -79,7 +79,7 @@ chatgpt-codex authorize \
   --allow-install-helpers \
   --allow-workspace-write \
   --allow-command-execution
-chatgpt-codex init --workspace "$WORKSPACE" --public-base-url "$PUBLIC_BASE_URL"
+chatgpt-codex channel register --workspace "$WORKSPACE" --public-base-url "$PUBLIC_BASE_URL"
 chatgpt-codex doctor
 ```
 
@@ -103,7 +103,7 @@ chatgpt-codex authorize `
   --allow-install-helpers `
   --allow-workspace-write `
   --allow-command-execution
-chatgpt-codex init --workspace "$Workspace" --public-base-url "$PublicBaseUrl"
+chatgpt-codex channel register --workspace "$Workspace" --public-base-url "$PublicBaseUrl"
 chatgpt-codex doctor
 ```
 
@@ -143,7 +143,7 @@ Verify these before saying setup is complete:
 
 ```bash
 chatgpt-codex api-smoke
-chatgpt-codex access status
+chatgpt-codex channel status
 curl --noproxy '*' "$PUBLIC_BASE_URL/health"
 curl --noproxy '*' "$PUBLIC_BASE_URL/openapi.json"
 ```
