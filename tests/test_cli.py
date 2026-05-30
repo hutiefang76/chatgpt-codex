@@ -230,6 +230,19 @@ class CliTests(unittest.TestCase):
         self.assertIn("chatgpt-codex access revoke", catalog["access"])
         self.assertIn("chatgpt-codex token", catalog["chatgpt_builder"])
 
+    def test_doctor_without_config_prints_next_step_instead_of_traceback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "missing.json"
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "doctor"])
+
+            output = stdout.getvalue()
+            self.assertEqual(exit_code, 1)
+            self.assertIn("config is missing", output)
+            self.assertIn("chatgpt-codex channel register", output)
+
     def test_channel_register_status_revoke_and_renew(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "config.json"

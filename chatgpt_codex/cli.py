@@ -221,6 +221,8 @@ def main(argv=None) -> int:
             return 0
         if args.channel_command == "register":
             return _channel_register(args, cfg_path)
+    if args.command == "doctor" and not cfg_path.exists():
+        return _doctor_missing_config(cfg_path)
 
     config = load_config(cfg_path)
 
@@ -308,6 +310,15 @@ def _doctor(config: AppConfig) -> int:
         ok = False
     print(f"cloudflared: {'OK found / 已找到' if shutil.which('cloudflared') else 'OPTIONAL missing / 可选，未找到，仅 tunnel 命令需要'}")
     return 0 if ok else 1
+
+
+def _doctor_missing_config(cfg_path: Path) -> int:
+    print(f"OS / 操作系统: {_platform_label()}")
+    print(f"Config / 配置文件: {cfg_path}")
+    print("  FAIL config is missing / 配置不存在")
+    print("Next / 下一步:")
+    print("  chatgpt-codex channel register --workspace /absolute/path/to/project --public-base-url https://actions.example.com")
+    return 1
 
 
 def _resolve_language(value: str = "auto") -> str:
