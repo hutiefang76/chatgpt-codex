@@ -161,7 +161,7 @@ chatgpt-codex builder smoke
 
 `builder open-login` 会用 Playwright 持久化 profile 打开 ChatGPT。用户手动登录后，`builder doctor` 检查 Builder 页面是否能加载，以及 Actions 是否可用。
 
-`builder configure --mode ui` 使用 Playwright UI 自动化。`builder configure --mode hybrid` 会一边走 UI，一边捕获脱敏后的 Builder 网络流量。`builder sniff` 是显式内部 API 发现流程：在打开的浏览器里执行一次 Builder 保存或配置动作，然后按 `Ctrl-C`，脱敏后的 route map 会保存到 `.chatgpt-codex/builder-routes.json`。
+`builder configure --mode ui` 会预填 GPT 名称、描述和 instructions，然后保持浏览器打开并等待你添加 Action、粘贴 bearer token、设置隐私/可见性并保存。当你打开保存后的 GPT 时，它会自动把 `https://chatgpt.com/g/...` 地址写入 `.chatgpt-codex/builder.json`，于是 `builder smoke` 能端到端运行。添加 Action 和粘贴 token 有意保留手动：Builder 这部分 UI 没有稳定控件。`builder configure --mode hybrid` 在此基础上同时捕获脱敏后的 Builder 网络流量。`builder sniff` 是显式内部 API 发现流程：在打开的浏览器里执行一次 Builder 保存或配置动作，然后按 `Ctrl-C`，脱敏后的 route map 会保存到 `.chatgpt-codex/builder-routes.json`。
 
 内部 API replay 必须留在同一个 Playwright 浏览器会话中执行。不要导出 cookie、session 或 ChatGPT 凭据。内部路由只作为不稳定的加速数据；验证不通过就回退到 UI 自动化。Computer Use 是视觉兜底，只在 Playwright 无法操作控件、弹窗或页面变化时使用。
 
@@ -358,7 +358,7 @@ chatgpt-codex gpt-instructions
 - 个人自用模式默认不过期。如需可选过期，可使用 `serve --ttl-minutes` 或 `access grant --ttl-minutes`。
 - `rotate-token` 会更换 bearer token；运行中的服务会在每次 Action 前从配置重新读取 token。
 - `channel revoke` 会立即让访问过期，并轮换 token 但不打印新密钥；`channel renew` 会重新激活访问，并打印供 Builder 使用的 token。
-- 默认拦截 `rm -rf`、`git reset --hard`、`sudo`、`reboot`、`mkfs` 等危险操作。
+- 默认拦截 `rm -rf`（任意 flag 顺序）、`dd of=`、`find -delete`、`git reset --hard`、`sudo`、`reboot`、`mkfs` 以及向裸磁盘设备写入等操作。这个黑名单只是尽力而为的防护栏、不是沙箱：有 shell 访问就总能绕过，所以真正的保障是在 ChatGPT 里逐个审查 Action，并只对单个受限 workspace 运行，绝不要对你的家目录运行。
 - 本项目不需要你的 ChatGPT 密码、cookie 或 OpenAI API key。
 
 仍然要注意：

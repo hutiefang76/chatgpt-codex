@@ -44,11 +44,16 @@ class WorkspaceTools:
         root = self.sandbox.resolve(path)
         entries: List[Dict[str, object]] = []
         max_results = max(1, int(max_results or 200))
+        truncated = False
 
         for candidate in self._walk(root, recursive=recursive):
             relative = self.sandbox.relative(candidate)
             if relative == "." or self._is_ignored(candidate) or not fnmatch.fnmatch(candidate.name, pattern or "*"):
                 continue
+            if len(entries) >= max_results:
+                # A further matching entry exists beyond the limit.
+                truncated = True
+                break
             stat = candidate.stat()
             entries.append(
                 {
@@ -58,14 +63,12 @@ class WorkspaceTools:
                     "modified": int(stat.st_mtime),
                 }
             )
-            if len(entries) >= max_results:
-                break
 
         entries.sort(key=lambda item: item["path"])
         return {
             "path": self.sandbox.relative(root),
             "entries": entries,
-            "truncated": len(entries) >= max_results,
+            "truncated": truncated,
         }
 
     def read_file(self, path: str, max_bytes: int = 200000) -> Dict[str, object]:

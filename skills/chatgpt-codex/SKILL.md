@@ -124,8 +124,8 @@ Primary path:
 - 用户登录后，用 `chatgpt-codex builder doctor` 检查 Builder 页面和 Actions 是否可用。
 - Use `chatgpt-codex builder payload --json` as the single source of truth for GPT name, description, instructions, schema URL, privacy URL, auth type, and visibility. It does not print the bearer token.
 - 使用 `chatgpt-codex builder payload --json` 作为 GPT 名称、描述、instructions、schema URL、privacy URL、鉴权类型和可见性的唯一字段来源。它不会打印 bearer token。
-- Use `chatgpt-codex builder configure --mode ui` for stable UI automation.
-- 使用 `chatgpt-codex builder configure --mode ui` 做稳定 UI 自动化。
+- Use `chatgpt-codex builder configure --mode ui` to prefill name/description/instructions; then complete Add Action + bearer token + save by hand. It waits and auto-captures the saved GPT URL so `builder smoke` works end to end.
+- 使用 `chatgpt-codex builder configure --mode ui` 预填名称/描述/指令；然后手动完成 添加 Action + 填 token + 保存。它会等待并自动捕获保存后的 GPT 地址，让 `builder smoke` 端到端可用。
 
 Internal API acceleration:
 

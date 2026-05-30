@@ -1,3 +1,4 @@
+import hmac
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -18,6 +19,12 @@ ChatGPT Codex 运行在你自己的电脑上。
 
 请求会在你配置的 workspace 内本地处理。本项目不收集、不存储、不出售数据。ChatGPT 会收到回答你的请求所需的 Action 参数和结果。请妥善保管 bearer token。
 """
+
+
+# Upper bound on a single request body. Large enough for real file writes,
+# small enough to stop a trivial memory-exhaustion attempt over a public URL.
+# 单个请求体上限：足够真实文件写入，又能挡住公网 URL 上的简单内存耗尽尝试。
+MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
 
 
 def create_server(config: AppConfig, config_file: Optional[Path] = None) -> ThreadingHTTPServer:
@@ -73,10 +80,12 @@ def create_server(config: AppConfig, config_file: Optional[Path] = None) -> Thre
         def do_GET(self):
             if self.path == "/health":
                 status = workspace_status()
+                # Unauthenticated endpoint: do not leak the absolute local
+                # workspace path. The name plus access status is enough to probe health.
+                # 未鉴权端点：不泄露工作区绝对路径，名称和访问状态足够做健康探测。
                 self._send_json(
                     {
                         "ok": True,
-                        "workspace": status["workspace"],
                         "active_workspace": status["active_workspace"],
                         "public_base_url": public_base_url(),
                         "access": status["access"],
@@ -145,7 +154,7 @@ def create_server(config: AppConfig, config_file: Optional[Path] = None) -> Thre
                 reload_config_locked()
                 expected = f"Bearer {config.token}"
                 access = config.access_status()
-            if self.headers.get("Authorization", "") != expected:
+            if not hmac.compare_digest(self.headers.get("Authorization", ""), expected):
                 return {"error": "missing or invalid bearer token"}, 401
             if not access["active"]:
                 return {"error": "access session expired", "access": access}, 403
@@ -155,6 +164,8 @@ def create_server(config: AppConfig, config_file: Optional[Path] = None) -> Thre
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0:
                 return {}
+            if length > MAX_REQUEST_BODY_BYTES:
+                raise ValueError("request body too large")
             raw = self.rfile.read(length).decode("utf-8")
             return json.loads(raw)
 

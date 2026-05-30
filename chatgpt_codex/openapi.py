@@ -136,7 +136,6 @@ def _schemas() -> Dict[str, object]:
         "HealthResult": _object(
             {
                 "ok": {"type": "boolean"},
-                "workspace": {"type": "string"},
                 "active_workspace": {"type": "string"},
                 "public_base_url": {"type": "string"},
             }

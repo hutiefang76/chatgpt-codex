@@ -161,7 +161,7 @@ chatgpt-codex builder smoke
 
 `builder open-login` opens ChatGPT in the Playwright persistent profile. After the user logs in manually, `builder doctor` checks whether the Builder page loads and whether Actions appear available.
 
-`builder configure --mode ui` uses Playwright UI automation. `builder configure --mode hybrid` also captures redacted Builder network traffic while using the UI. `builder sniff` is the explicit internal API discovery flow: perform one Builder save/configure action in the opened browser, press `Ctrl-C`, and the redacted route map is saved to `.chatgpt-codex/builder-routes.json`.
+`builder configure --mode ui` prefills the GPT name, description, and instructions, then keeps the browser open and waits while you add the Action, paste the bearer token, set privacy/visibility, and save. When you open the saved GPT, it auto-captures the `https://chatgpt.com/g/...` URL into `.chatgpt-codex/builder.json` so `builder smoke` can run end to end. Adding the Action and pasting the token stay manual on purpose: the Builder UI for those steps has no stable controls. `builder configure --mode hybrid` does the same while also capturing redacted Builder network traffic. `builder sniff` is the explicit internal API discovery flow: perform one Builder save/configure action in the opened browser, press `Ctrl-C`, and the redacted route map is saved to `.chatgpt-codex/builder-routes.json`.
 
 Internal API replay must stay inside the same Playwright browser context. Do not export cookies, sessions, or ChatGPT credentials. Treat internal routes as unstable acceleration data; if they do not validate, fall back to UI automation. Computer Use is the visual fallback for controls, dialogs, or page changes that Playwright cannot operate.
 
@@ -358,7 +358,7 @@ Built-in guardrails:
 - Personal-use access does not expire by default. Optional expiry is available with `serve --ttl-minutes` or `access grant --ttl-minutes`.
 - `rotate-token` changes the bearer token; a running server reloads the token from config before each Action.
 - `channel revoke` immediately expires access and rotates the token without printing the new secret; `channel renew` reactivates access and prints the token for Builder.
-- Commands like `rm -rf`, `git reset --hard`, `sudo`, `reboot`, `mkfs`, and similar destructive operations are blocked.
+- Commands like `rm -rf` (in any flag order), `dd of=`, `find -delete`, `git reset --hard`, `sudo`, `reboot`, `mkfs`, and writes to raw disk devices are blocked. This deny-list is a best-effort guardrail, not a sandbox: with real shell access it can always be bypassed, so the actual safeguards are reviewing each Action in ChatGPT and running against one scoped workspace, never your home directory.
 - The project never needs your ChatGPT password, cookies, or OpenAI API key.
 
 Still important:

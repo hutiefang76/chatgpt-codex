@@ -48,11 +48,19 @@ class CommandPolicy:
     在命令进入 shell 之前拦截常见危险命令。
     """
 
-    # These patterns are intentionally conservative. They are a guardrail, not
-    # a full shell sandbox.
-    # 这些规则刻意保守：它们是防护栏，不是完整的 shell 沙箱。
+    # These patterns are a best-effort guardrail, NOT a security boundary. With
+    # shell=True a determined caller can always bypass a deny-list (other tools,
+    # encodings, scripts). The real boundary is per-Action approval in ChatGPT
+    # plus running against one scoped workspace, never your home directory.
+    # 这些规则只是尽力而为的防护栏，不是安全边界。shell=True 下黑名单总能被绕过；
+    # 真正的边界是 ChatGPT 内逐次人工批准 Action + 只对单个受限 workspace 运行。
     DEFAULT_DENY_PATTERNS = (
-        r"\brm\s+-[^;&|]*r[^;&|]*f\b",
+        # rm with recursive AND force, in any flag order or long form
+        # (catches -rf, -fr, -r -f, --recursive --force, ...).
+        r"\brm\b(?=[^;&|]*(?:--recursive|-\w*[rR]))(?=[^;&|]*(?:--force|-\w*f))",
+        r"\bdd\b[^;&|]*\bof=",
+        r"\bfind\b[^;&|]*\s-delete\b",
+        r">\s*/dev/(?:sd|hd|vd|xvd|nvme|disk|mapper)",
         r"\bgit\s+reset\s+--hard\b",
         r"\bgit\s+clean\s+-[^;&|]*f\b",
         r"\bsudo\b",

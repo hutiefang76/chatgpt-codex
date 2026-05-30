@@ -10,7 +10,7 @@ ChatGPT Codex 会通过 HTTP Actions 暴露本地 workspace。推荐的个人自
 2. Bearer token: required for every POST Action that can read, write, switch workspace, patch, search, or execute.
 3. Access expiry: optional TTL enforced by the local server before each POST Action when explicitly enabled.
 4. Workspace boundary: every path must resolve inside an authorized workspace.
-5. Command policy: common destructive commands are blocked before shell execution.
+5. Command policy: common destructive commands are blocked before shell execution. This is a best-effort guardrail, not a sandbox — with real shell access it can always be bypassed, so it is backed by per-Action approval in ChatGPT and a scoped workspace.
 
 中文：
 
@@ -18,7 +18,7 @@ ChatGPT Codex 会通过 HTTP Actions 暴露本地 workspace。推荐的个人自
 2. Bearer token：所有可能读写、切换工作区、打补丁、搜索或执行命令的 POST Action 都必须携带。
 3. 访问过期时间：显式开启时可设置 TTL；本地服务会在每次 POST Action 前强制检查。
 4. Workspace 边界：所有路径都必须解析在已授权 workspace 内。
-5. 命令策略：常见破坏性命令会在进入 shell 前被拦截。
+5. 命令策略：常见破坏性命令会在进入 shell 前被拦截。这只是尽力而为的防护栏、不是沙箱——有 shell 访问就能绕过，因此要靠 ChatGPT 内逐个批准 Action 和受限 workspace 来兜底。
 
 ## Recommended Commands / 推荐命令
 

@@ -10,6 +10,13 @@ const BUILDER_URL = "https://chatgpt.com/gpts/editor";
 const GPT_URL_PREFIX = "https://chatgpt.com/g/";
 const require = createRequire(import.meta.url);
 
+// A saved GPT exposes a chat URL like https://chatgpt.com/g/g-XXXX-name.
+// This is the single source of truth for "the GPT was saved", used by both the
+// configure capture loop and the smoke target resolver.
+function isSavedGptUrl(url) {
+  return typeof url === "string" && url.startsWith(GPT_URL_PREFIX);
+}
+
 function parseArgs(argv) {
   const result = { command: argv[2], mode: "ui", visibility: "private" };
   for (let i = 3; i < argv.length; i += 1) {
@@ -225,26 +232,58 @@ async function fillFirst(page, labels, value) {
   return false;
 }
 
-async function configureUi(page, config, visibility) {
+async function configureUi(page, config) {
   const payload = builderPayload(config);
   await page.goto(BUILDER_URL, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
 
-  await fillFirst(page, ["Name", "名称", "GPT name"], payload.name);
-  await fillFirst(page, ["Description", "描述"], payload.description);
-  await fillFirst(page, ["Instructions", "指令"], payload.instructions);
+  // Prefill only the plain text fields. Adding the Action, importing the schema,
+  // pasting the bearer token, and saving are intentionally left to the human:
+  // the Builder UI for those steps has no stable selectors, so we do not pretend
+  // to automate them.
+  const prefilled = {
+    name: await fillFirst(page, ["Name", "名称", "GPT name"], payload.name),
+    description: await fillFirst(page, ["Description", "描述"], payload.description),
+    instructions: await fillFirst(page, ["Instructions", "指令"], payload.instructions),
+  };
 
   const pageText = await page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
-  const result = {
-    attempted: true,
-    visibility,
-    page_url: page.url(),
+  return {
+    prefilled,
     found_actions_text: /actions?|操作|schema|openapi|authentication|鉴权|api key/i.test(pageText),
     schema_url: payload.schemaUrl,
     privacy_url: payload.privacyUrl,
-    note: "If the UI did not expose stable form controls, rerun sniff mode and use Computer Use fallback.",
+    page_url: page.url(),
   };
-  return result;
+}
+
+// Wait until the editor navigates to a saved GPT URL (https://chatgpt.com/g/...),
+// which appears after the human saves the GPT and opens it. Resolves with the URL
+// on capture, or null on timeout / Ctrl-C / browser close.
+function waitForSavedGptUrl(page, context, maxSeconds) {
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearInterval(poll);
+      clearTimeout(cap);
+      resolve(value);
+    };
+    const poll = setInterval(() => {
+      let url = "";
+      try {
+        url = page.url();
+      } catch {
+        finish(null);
+        return;
+      }
+      if (isSavedGptUrl(url)) finish(url);
+    }, 1500);
+    const cap = setTimeout(() => finish(null), Math.max(5, maxSeconds) * 1000);
+    process.once("SIGINT", () => finish(null));
+    context.on("close", () => finish(null));
+  });
 }
 
 async function runOpenLogin(args) {
@@ -260,7 +299,13 @@ async function runDoctor(args) {
   const page = await context.newPage();
   const status = await detectBuilder(page);
   await context.close();
-  console.log(JSON.stringify({ ok: status.loggedIn && status.hasEditor, ...status, profile: args.profile }, null, 2));
+  console.log(JSON.stringify({
+    ok: status.loggedIn && status.hasEditor,
+    ...status,
+    detection: "heuristic-text-scan",
+    note: "Login/editor/Actions detection is a heuristic page-text scan and can be wrong (the Actions panel may be hidden behind a Configure tab). The reliable confirmation is a successful `builder smoke`.",
+    profile: args.profile,
+  }, null, 2));
 }
 
 async function runSniff(args) {
@@ -325,35 +370,79 @@ async function runConfigure(args) {
         note: "The request was replayed inside the same Playwright browser context and the Builder page was refreshed afterward.",
       };
     }
+    await writeJsonPrivate(args.state, {
+      schema_version: 1,
+      updated_at: new Date().toISOString(),
+      last_builder_url: page.url(),
+      mode: args.mode,
+      visibility: args.visibility,
+    });
   } else {
-    result = await configureUi(page, config, args.visibility);
-    result.ok = true;
-    result.mode = args.mode;
-    if (captures.length) {
+    const ui = await configureUi(page, config);
+    const manualSteps = [
+      `Add an Action and import the schema URL: ${ui.schema_url}`,
+      "Authentication: API key. Auth type: Bearer. Paste the token from `chatgpt-codex token` (not printed here).",
+      `Privacy policy URL: ${ui.privacy_url}`,
+      `Visibility: save as ${args.visibility === "private" ? "Only me" : args.visibility}.`,
+      "Save the GPT, then open it (View GPT) so its /g/ chat URL loads.",
+    ];
+    const waitSeconds = Number(args.wait_seconds) > 0 ? Number(args.wait_seconds) : 600;
+
+    // Live guidance on stderr so stdout stays a single JSON result for callers.
+    process.stderr.write(`${JSON.stringify({
+      stage: "prefilled",
+      prefilled: ui.prefilled,
+      manual_steps_required: manualSteps,
+      waiting_seconds: waitSeconds,
+      note: "Prefilled text fields. Finish Add Action + token + Save, then open the GPT; this command auto-captures the /g/ URL. Press Ctrl-C to stop without capturing.",
+      cn_note: "已预填文本字段。请完成 添加 Action + 填 token + 保存，并打开该 GPT；本命令会自动捕获 /g/ 地址写入 state。Ctrl-C 可随时中止。",
+    }, null, 2)}\n`);
+
+    const capturedUrl = await waitForSavedGptUrl(page, context, waitSeconds);
+
+    if (args.mode === "hybrid" && captures.length) {
       await writeJsonPrivate(args.routes, {
         schema_version: 1,
         captured_at: new Date().toISOString(),
         source: "playwright-hybrid-configure",
         captures: captures.map(redact),
       });
+    }
+    await writeJsonPrivate(args.state, {
+      schema_version: 1,
+      updated_at: new Date().toISOString(),
+      last_builder_url: page.url(),
+      ...(capturedUrl ? { gpt_url: capturedUrl } : {}),
+      mode: args.mode,
+      visibility: args.visibility,
+    });
+    result = {
+      ok: Boolean(capturedUrl),
+      mode: args.mode,
+      saved: Boolean(capturedUrl),
+      gpt_url: capturedUrl || "",
+      prefilled: ui.prefilled,
+      found_actions_text: ui.found_actions_text,
+      schema_url: ui.schema_url,
+      privacy_url: ui.privacy_url,
+      manual_steps_required: capturedUrl ? [] : manualSteps,
+      state_path: args.state,
+      note: capturedUrl
+        ? "Saved GPT URL captured. `builder smoke` can now open the GPT end to end."
+        : "Stopped before a saved GPT URL appeared. Finish Save + open the GPT, then rerun `builder configure` to capture it.",
+    };
+    if (args.mode === "hybrid" && captures.length) {
       result.route_map_path = args.routes;
       result.captured = captures.length;
     }
   }
-  await writeJsonPrivate(args.state, {
-    schema_version: 1,
-    updated_at: new Date().toISOString(),
-    last_builder_url: page.url(),
-    mode: args.mode,
-    visibility: args.visibility,
-  });
   await context.close();
   console.log(JSON.stringify(redact(result), null, 2));
 }
 
 async function runSmoke(args) {
   const state = await readJson(args.state).catch(() => ({}));
-  const targetUrl = state.gpt_url || state.last_gpt_url || (state.last_builder_url && state.last_builder_url.startsWith(GPT_URL_PREFIX) ? state.last_builder_url : "");
+  const targetUrl = state.gpt_url || state.last_gpt_url || (isSavedGptUrl(state.last_builder_url) ? state.last_builder_url : "");
   const context = await launch(args.profile);
   const page = await context.newPage();
   await page.goto(targetUrl || CHATGPT_HOME, { waitUntil: "domcontentloaded" });
@@ -368,13 +457,44 @@ async function runSmoke(args) {
   console.log(JSON.stringify(result, null, 2));
 }
 
+// Pure-function self-test. Requires no browser/login so it can run in CI; the
+// playwright probe is best-effort and does not fail the run when absent.
+async function runSelfTest() {
+  const checks = [];
+  const expect = (name, cond) => checks.push({ name, ok: Boolean(cond) });
+
+  // Saved-GPT-URL detection — the regression that made `builder smoke` dead code.
+  expect("saved_gpt_url_detected", isSavedGptUrl("https://chatgpt.com/g/g-abc123-demo"));
+  expect("editor_url_not_saved", !isSavedGptUrl("https://chatgpt.com/gpts/editor"));
+  expect("empty_url_not_saved", !isSavedGptUrl(""));
+
+  const payload = builderPayload({ public_base_url: "https://actions.example.com/" });
+  expect("schema_url", payload.schemaUrl === "https://actions.example.com/openapi.json");
+  expect("privacy_url", payload.privacyUrl === "https://actions.example.com/privacy");
+
+  const redacted = JSON.stringify(redact({ headers: { authorization: "Bearer secret-xyz" }, api_key: "secret-xyz" }));
+  expect("redacts_secrets", !redacted.includes("secret-xyz"));
+
+  const parsed = parseArgs(["node", "script", "configure", "--mode", "hybrid", "--wait-seconds", "5"]);
+  expect("parses_mode", parsed.mode === "hybrid");
+  expect("parses_wait_seconds", parsed.wait_seconds === "5");
+
+  let playwrightLoaded = false;
+  try {
+    await loadPlaywright();
+    playwrightLoaded = true;
+  } catch {
+    playwrightLoaded = false;
+  }
+
+  const ok = checks.every(check => check.ok);
+  console.log(JSON.stringify({ ok, playwright_loaded: playwrightLoaded, checks }, null, 2));
+  if (!ok) process.exit(1);
+}
+
 async function main() {
   const args = parseArgs(process.argv);
-  if (args.command === "self-test") {
-    await loadPlaywright();
-    console.log(JSON.stringify({ ok: true, playwright_loaded: true }, null, 2));
-    return;
-  }
+  if (args.command === "self-test") return runSelfTest();
   if (!args.command || !args.profile || !args.config || !args.state || !args.routes) {
     throw new Error("usage: chatgpt_builder_playwright.mjs <open-login|doctor|sniff|configure|smoke> --config <path> --profile <path> --state <path> --routes <path>");
   }
