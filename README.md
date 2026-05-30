@@ -176,6 +176,10 @@ Agent 应优先使用机器可读命令：
 chatgpt-codex status
 chatgpt-codex ai-commands
 chatgpt-codex api-smoke
+chatgpt-codex access status
+chatgpt-codex access grant --ttl-minutes 120
+chatgpt-codex access revoke
+chatgpt-codex rotate-token --ttl-minutes 120
 chatgpt-codex set-public-url https://your-current-public-url
 chatgpt-codex verify
 ```
@@ -192,6 +196,10 @@ chatgpt-codex verify
 
 `api-smoke` 会启动一个临时本地服务，直接测试 Action 接口：鉴权、健康检查、schema、工作区状态、工作区列表、文件列表/读取/写入/搜索/补丁、命令执行、工作区切换和安全拦截。它不会触碰你的真实 workspace。
 
+`access grant` sets a time limit for Action calls. `chatgpt-codex access revoke` expires access immediately and rotates the token without printing it. `chatgpt-codex rotate-token` prints a new token once for pasting into ChatGPT Builder.
+
+`access grant` 会给 Action 调用设置有效期。`chatgpt-codex access revoke` 会立即让访问过期，并轮换 token 但不打印。`chatgpt-codex rotate-token` 会一次性打印新 token，供粘贴到 ChatGPT Builder。
+
 When a temporary tunnel prints a new public URL, save it with `set-public-url` so OpenAPI and Builder fields stay aligned. Use `verify` after the server and public route are running.
 
 临时隧道输出新的公网 URL 后，用 `set-public-url` 保存，确保 OpenAPI 和 Builder 字段一致。服务和公网入口启动后，用 `verify` 做闭环检查。
@@ -203,7 +211,7 @@ Closed-loop product flow:
 1. Collect minimal human inputs and local authorization.
 2. Install and create `.chatgpt-codex/config.json`.
 3. Register authorized workspaces and select `active_workspace`.
-4. Start the local server.
+4. Start the local server with an access TTL.
 5. Start or provide a public HTTPS route.
 6. Save the final public URL with `set-public-url`.
 7. Run `api-smoke` for direct interface testing, then `verify` against the running route.
@@ -215,7 +223,7 @@ Closed-loop product flow:
 1. 收集真人最小输入和本地授权。
 2. 安装并创建 `.chatgpt-codex/config.json`。
 3. 登记已授权工作区并选择 `active_workspace`。
-4. 启动本地服务。
+4. 带访问有效期启动本地服务。
 5. 启动或提供公网 HTTPS 入口。
 6. 用 `set-public-url` 保存最终公网 URL。
 7. 先运行 `api-smoke` 做直接接口测试，再对运行中的入口运行 `verify`。
@@ -283,8 +291,12 @@ Start the local server:
 启动本地服务：
 
 ```bash
-chatgpt-codex serve
+chatgpt-codex serve --ttl-minutes 120
 ```
+
+Without `--ttl-minutes`, the server stays active until the process stops. With `--ttl-minutes`, POST Actions return `403` after expiry even if the process and tunnel are still running.
+
+不加 `--ttl-minutes` 时，服务会持续有效直到进程停止。加上 `--ttl-minutes` 后，即使进程和隧道还在，过期后 POST Actions 也会返回 `403`。
 
 ### Switching Projects In GPT / 在 GPT 里切换项目
 
@@ -332,6 +344,7 @@ After the public URL is known:
 ```bash
 chatgpt-codex api-smoke
 chatgpt-codex set-public-url https://your-current-public-url
+chatgpt-codex access status
 chatgpt-codex verify
 ```
 
@@ -439,6 +452,10 @@ In ChatGPT:
 
 ## Security Model / 安全模型
 
+Detailed lifecycle notes live in [docs/SECURITY.md](docs/SECURITY.md).
+
+更完整的生命周期说明见 [docs/SECURITY.md](docs/SECURITY.md)。
+
 This tool gives ChatGPT real access to a local workspace. Treat the bearer token like a password.
 
 这个工具会让 ChatGPT 真正访问你的本地工作区。请把 bearer token 当作密码保管。
@@ -455,6 +472,12 @@ Built-in guardrails:
 - 文件列表和搜索会跳过 `.git`、`.venv`、`node_modules`、缓存等实现细节目录。
 - POST actions require `Authorization: Bearer <token>`.
 - 所有 POST Action 都要求 `Authorization: Bearer <token>`。
+- Access sessions can expire automatically with `serve --ttl-minutes` or `access grant --ttl-minutes`.
+- 可以用 `serve --ttl-minutes` 或 `access grant --ttl-minutes` 让访问会话自动过期。
+- `rotate-token` changes the bearer token; a running server reloads the token from config before each Action.
+- `rotate-token` 会更换 bearer token；运行中的服务会在每次 Action 前从配置重新读取 token。
+- `access revoke` immediately expires access and rotates the token without printing the new secret.
+- `access revoke` 会立即让访问过期，并轮换 token 但不打印新密钥。
 - Commands like `rm -rf`, `git reset --hard`, `sudo`, `reboot`, `mkfs`, and similar destructive operations are blocked.
 - 默认拦截 `rm -rf`、`git reset --hard`、`sudo`、`reboot`、`mkfs` 等危险操作。
 - The project never needs your ChatGPT password, cookies, or API key.

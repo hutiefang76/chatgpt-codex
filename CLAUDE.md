@@ -7,3 +7,7 @@ Use [skills/chatgpt-codex/SKILL.md](./skills/chatgpt-codex/SKILL.md), then follo
 This repository is designed so Claude asks only for the minimal human inputs: Chrome login to ChatGPT, workspace path, optional Chrome login to Cloudflare, optional Cloudflare-managed domain, and local authorization. Claude then detects macOS or Windows, chooses a temporary HTTPS tunnel by default, uses `chatgpt-codex.<domain>` when Cloudflare login and domain are available, saves local setup permissions, verifies the service, and hands back or applies the exact ChatGPT Builder fields after the user logs into ChatGPT manually.
 
 本仓库设计目标是让 Claude 只向用户索要真人必须提供的最小信息：Chrome 登录 ChatGPT、workspace 路径、可选的 Chrome 登录 Cloudflare、可选的 Cloudflare 管理域名，以及本地授权。随后 Claude 自动识别 macOS 或 Windows、默认选择临时 HTTPS 隧道、在 Cloudflare 登录和域名都具备时使用 `chatgpt-codex.<domain>`、保存本地配置授权、验证服务，并在用户手动登录 ChatGPT 后交付或填写可用于 ChatGPT Builder 的字段。
+
+Prefer `chatgpt-codex serve --ttl-minutes 120`, `chatgpt-codex access status`, and `chatgpt-codex api-smoke` before browser automation. Use `chatgpt-codex rotate-token` for a new Builder auth token and `chatgpt-codex access revoke` to expire access immediately.
+
+浏览器自动化前，优先使用 `chatgpt-codex serve --ttl-minutes 120`、`chatgpt-codex access status` 和 `chatgpt-codex api-smoke`。需要新的 Builder 鉴权 token 时用 `chatgpt-codex rotate-token`，需要立即停止访问时用 `chatgpt-codex access revoke`。

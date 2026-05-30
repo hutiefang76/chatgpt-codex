@@ -66,8 +66,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 如果用户想手工编辑文件，用 `scripts/prepare-permissions.sh` 或 `scripts/prepare-permissions.ps1` 复制根目录的 `permissions.example.json`。
 - Run `chatgpt-codex doctor`.
 - 运行 `chatgpt-codex doctor`。
-- Start `chatgpt-codex serve`.
-- 启动 `chatgpt-codex serve`。
+- Start `chatgpt-codex serve --ttl-minutes 120` or explicitly run `chatgpt-codex access grant --ttl-minutes 120`.
+- 启动 `chatgpt-codex serve --ttl-minutes 120`，或显式运行 `chatgpt-codex access grant --ttl-minutes 120`。
 - Use a temporary HTTPS tunnel when no Cloudflare login/domain are provided; use `chatgpt-codex.<domain>` when both are provided.
 - 没有 Cloudflare 登录/域名时使用临时 HTTPS 隧道；两者都提供时使用 `chatgpt-codex.<domain>`。
 - Open ChatGPT Builder with `chatgpt-codex open-chatgpt` only after browser automation is approved and the user has logged in manually.
@@ -76,6 +76,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 确保 GPT Instructions 写明用 `workspace_status`、`list_workspaces` 和 `switch_workspace` 显示并切换当前本地目录。
 - Run `chatgpt-codex api-smoke` before browser work to test the Action interfaces directly in temporary workspaces.
 - 浏览器操作前运行 `chatgpt-codex api-smoke`，在临时工作区里直接测试 Action 接口。
+- Use `chatgpt-codex rotate-token` to refresh Builder auth, and `chatgpt-codex access revoke` to expire access immediately.
+- 用 `chatgpt-codex rotate-token` 刷新 Builder 鉴权，用 `chatgpt-codex access revoke` 立即让访问过期。
 - Verify `/health`, `/openapi.json`, and one authenticated read-only action.
 - 验证 `/health`、`/openapi.json` 和一个带鉴权的只读 Action。
 - Prefer `chatgpt-codex verify` for machine-readable final verification.

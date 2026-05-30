@@ -4,7 +4,7 @@
 
 **Goal:** Build a standalone local coding bridge for ChatGPT Custom GPT Actions.
 
-**Architecture:** A dependency-free Python package exposes a locked-down workspace HTTP API, generates OpenAPI for ChatGPT Actions, and provides CLI helpers for setup, public-route guidance, and GPT instructions. The server never stores ChatGPT credentials and only accepts bearer-authenticated tool calls.
+**Architecture:** A dependency-free Python package exposes a locked-down workspace HTTP API, generates OpenAPI for ChatGPT Actions, and provides CLI helpers for setup, public-route guidance, access TTL, token rotation, and GPT instructions. The server never stores ChatGPT credentials and only accepts bearer-authenticated tool calls during an active access session.
 
 **Tech Stack:** Python 3.10+ standard library and `unittest`, with macOS Terminal and Windows PowerShell setup paths. The local server runs without external runtime dependencies; ChatGPT web access requires a public HTTPS route, and the built-in tunnel command can create one when its helper is installed.
 

@@ -148,6 +148,19 @@ class CliTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             AppConfig.from_dict({"workspace": "/tmp/legacy", "token": "secret-token"})
 
+    def test_invalid_access_expiry_is_inactive_instead_of_crashing(self):
+        config = AppConfig(
+            token="secret-token",
+            workspaces={"demo": Path.cwd()},
+            active_workspace="demo",
+            access_expires_at="not-a-date",
+        )
+
+        status = config.access_status()
+
+        self.assertEqual(status["mode"], "invalid")
+        self.assertFalse(status["active"])
+
     def test_status_prints_machine_readable_state_without_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "config.json"
@@ -176,6 +189,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertTrue(status["configured"])
             self.assertTrue(status["token_configured"])
+            self.assertTrue(status["access"]["active"])
             self.assertEqual(status["active_workspace"], "demo")
             self.assertEqual(status["openapi_url"], "https://actions.example.com/openapi.json")
             self.assertNotIn(token, stdout.getvalue())
@@ -191,9 +205,11 @@ class CliTests(unittest.TestCase):
         self.assertIn("setup", catalog)
         self.assertIn("workspace", catalog)
         self.assertIn("chatgpt-codex status", catalog["inspect"])
+        self.assertIn("chatgpt-codex access status", catalog["inspect"])
         self.assertIn("chatgpt-codex set-public-url <url>", catalog["routing"])
         self.assertIn("chatgpt-codex verify", catalog["inspect"])
         self.assertIn("chatgpt-codex api-smoke", catalog["inspect"])
+        self.assertIn("chatgpt-codex access revoke", catalog["access"])
         self.assertIn("chatgpt-codex token", catalog["chatgpt_builder"])
 
     def test_api_smoke_exercises_action_interfaces_without_existing_config(self):
@@ -213,7 +229,51 @@ class CliTests(unittest.TestCase):
         self.assertIn("switch_workspace", check_names)
         self.assertIn("path_escape_blocked", check_names)
         self.assertIn("dangerous_command_blocked", check_names)
+        self.assertIn("expired_access_blocked", check_names)
         self.assertNotIn("api-smoke-token", stdout.getvalue())
+
+    def test_access_commands_grant_revoke_and_rotate_without_leaking_status_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            run_quietly(["--config", str(config_path), "init", "--workspace", str(workspace), "--workspace-name", "demo"])
+            original = load_config(config_path).token
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "access", "grant", "--ttl-minutes", "30"])
+            granted = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(granted["access"]["active"])
+            self.assertFalse(granted["token_rotated"])
+            self.assertEqual(load_config(config_path).token, original)
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "access", "status"])
+            self.assertEqual(exit_code, 0)
+            self.assertNotIn(original, stdout.getvalue())
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "access", "revoke"])
+            revoked = json.loads(stdout.getvalue())
+            after_revoke = load_config(config_path)
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(revoked["access"]["active"])
+            self.assertTrue(revoked["token_rotated"])
+            self.assertNotEqual(after_revoke.token, original)
+            self.assertNotIn(after_revoke.token, stdout.getvalue())
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "rotate-token", "--ttl-minutes", "15"])
+            rotated = json.loads(stdout.getvalue())
+            after_rotate = load_config(config_path)
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(rotated["token"], after_rotate.token)
+            self.assertTrue(rotated["access"]["active"])
 
     def test_set_public_url_preserves_token_and_workspaces(self):
         with tempfile.TemporaryDirectory() as tmp:

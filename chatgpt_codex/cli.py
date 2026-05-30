@@ -23,6 +23,7 @@ from .config import (
     save_permissions,
 )
 from .openapi import make_openapi_document
+from .security import generate_token
 from .server import create_server
 
 
@@ -51,6 +52,8 @@ def main(argv=None) -> int:
     subcommands.add_parser("route-options", help="Explain HTTPS route choices. / 说明 HTTPS 入口选项。")
     public_url_parser = subcommands.add_parser("set-public-url", help="Update public_base_url without changing token or workspaces. / 只更新 public_base_url，不改变 token 或工作区。")
     public_url_parser.add_argument("url", help="Public HTTPS base URL. / 公网 HTTPS 根地址。")
+    rotate_parser = subcommands.add_parser("rotate-token", help="Rotate the bearer token and print the new token once. / 轮换 bearer token 并只打印一次新 token。")
+    rotate_parser.add_argument("--ttl-minutes", type=int, default=0, help="Optional access session TTL to set while rotating. / 轮换时可选设置访问会话分钟数。")
     verify_parser = subcommands.add_parser("verify", help="Verify health, schema, and one authenticated read-only action. / 验证健康检查、schema 和一个带鉴权只读 Action。")
     verify_parser.add_argument("--base-url", default="", help="Override base URL for verification. / 覆盖验证用根地址。")
     verify_parser.add_argument("--timeout", type=int, default=10, help="Request timeout seconds. / 请求超时秒数。")
@@ -69,6 +72,15 @@ def main(argv=None) -> int:
     serve_parser = subcommands.add_parser("serve", help="Start the local HTTP action server. / 启动本地 HTTP Action 服务。")
     serve_parser.add_argument("--host", default=None)
     serve_parser.add_argument("--port", type=int, default=None)
+    serve_parser.add_argument("--ttl-minutes", type=int, default=0, help="Set an access expiry when starting the server. / 启动服务时设置访问过期分钟数。")
+
+    access_parser = subcommands.add_parser("access", help="Manage access session expiry. / 管理访问会话过期时间。")
+    access_subcommands = access_parser.add_subparsers(dest="access_command", required=True)
+    access_subcommands.add_parser("status", help="Show access session status without printing the token. / 显示访问会话状态，不打印 token。")
+    access_grant = access_subcommands.add_parser("grant", help="Grant access for a fixed number of minutes. / 授权固定分钟数访问。")
+    access_grant.add_argument("--ttl-minutes", type=int, required=True, help="Access lifetime in minutes. / 访问有效分钟数。")
+    access_grant.add_argument("--rotate-token", action="store_true", help="Rotate token while granting access. / 授权时同时轮换 token。")
+    access_subcommands.add_parser("revoke", help="Expire access immediately and rotate the token. / 立即过期访问并轮换 token。")
 
     workspace_parser = subcommands.add_parser("workspace", help="Manage authorized workspaces. / 管理已授权工作区。")
     workspace_subcommands = workspace_parser.add_subparsers(dest="workspace_command", required=True)
@@ -201,10 +213,19 @@ def main(argv=None) -> int:
         save_config(config, cfg_path, overwrite=True)
         print(json.dumps({"public_base_url": config.public_base_url}, indent=2, ensure_ascii=False))
         return 0
+    if args.command == "rotate-token":
+        config.token = generate_token()
+        if args.ttl_minutes:
+            config.grant_access(args.ttl_minutes)
+        save_config(config, cfg_path, overwrite=True)
+        print(json.dumps({"token": config.token, "access": config.access_status()}, indent=2, ensure_ascii=False))
+        return 0
     if args.command == "verify":
         result = _verify_actions(config, args.base_url or config.public_base_url, args.timeout)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0 if result["ok"] else 1
+    if args.command == "access":
+        return _access_command(args, config, cfg_path)
     if args.command == "workspace":
         return _workspace_command(args, config, cfg_path)
     if args.command == "serve":
@@ -212,9 +233,13 @@ def main(argv=None) -> int:
             config.host = args.host
         if args.port:
             config.port = args.port
+        if args.ttl_minutes:
+            config.grant_access(args.ttl_minutes)
+            save_config(config, cfg_path, overwrite=True)
         server = create_server(config, cfg_path)
         print(f"Serving / 正在服务 {config.active_workspace}:{config.workspace} at http://{config.host}:{server.server_port}")
         print(f"OpenAPI: {config.public_base_url.rstrip('/')}/openapi.json")
+        print(f"Access / 访问会话: {json.dumps(config.access_status(), ensure_ascii=False)}")
         try:
             server.serve_forever()
         except KeyboardInterrupt:
@@ -246,7 +271,11 @@ def _doctor(config: AppConfig) -> int:
     print(f"Local server / 本地服务: http://{config.host}:{config.port}")
     print(f"Public base URL / 公网根地址: {config.public_base_url}")
     print(f"Bearer token / Bearer token: {'OK set / 已设置' if config.token else 'FAIL missing / 缺失'}")
+    access = config.access_status()
+    print(f"Access session / 访问会话: {access['mode']}, active={access['active']}, expires_at={access['expires_at'] or 'not set / 未设置'}")
     if not config.token:
+        ok = False
+    if not access["active"]:
         ok = False
     print(f"cloudflared: {'OK found / 已找到' if shutil.which('cloudflared') else 'OPTIONAL missing / 可选，未找到，仅 tunnel 命令需要'}")
     return 0 if ok else 1
@@ -276,6 +305,7 @@ def _management_status(cfg_path: Path) -> dict:
                 "openapi_url": f"{config.public_base_url.rstrip('/')}/openapi.json",
                 "privacy_url": f"{config.public_base_url.rstrip('/')}/privacy",
                 "token_configured": bool(config.token),
+                "access": config.access_status(),
             }
         )
     if permissions_file.exists():
@@ -301,10 +331,12 @@ def _ai_command_catalog() -> dict:
             "chatgpt-codex init --workspace <path> --workspace-name <name> --public-base-url <url>",
             "chatgpt-codex authorize --workspace <path> --operating-system auto --access-plan <plan> --public-base-url <url>",
             "chatgpt-codex permissions-template --output .chatgpt-codex/permissions.json",
+            "chatgpt-codex rotate-token --ttl-minutes <minutes>",
         ],
         "inspect": [
             "chatgpt-codex status",
             "chatgpt-codex doctor",
+            "chatgpt-codex access status",
             "chatgpt-codex verify",
             "chatgpt-codex verify --base-url <url>",
             "chatgpt-codex api-smoke",
@@ -327,15 +359,46 @@ def _ai_command_catalog() -> dict:
             "chatgpt-codex open-chatgpt",
         ],
         "runtime": [
-            "chatgpt-codex serve",
+            "chatgpt-codex serve --ttl-minutes <minutes>",
             "chatgpt-codex tunnel",
+        ],
+        "access": [
+            "chatgpt-codex access grant --ttl-minutes <minutes>",
+            "chatgpt-codex access grant --ttl-minutes <minutes> --rotate-token",
+            "chatgpt-codex access revoke",
+            "chatgpt-codex rotate-token",
         ],
         "notes": [
             "status and ai-commands are machine-readable JSON",
             "status reports token_configured but never prints the bearer token",
+            "rotate-token is the only management command that prints a new bearer token",
+            "access revoke expires the current session and rotates the token without printing it",
             "workspace switching is limited to registered workspace names",
         ],
     }
+
+
+def _access_command(args, config: AppConfig, cfg_path: Path) -> int:
+    if args.access_command == "status":
+        print(json.dumps(config.access_status(), indent=2, ensure_ascii=False))
+        return 0
+    if args.access_command == "grant":
+        if args.rotate_token:
+            config.token = generate_token()
+        access = config.grant_access(args.ttl_minutes)
+        save_config(config, cfg_path, overwrite=True)
+        result = {"access": access, "token_rotated": bool(args.rotate_token)}
+        if args.rotate_token:
+            result["token"] = config.token
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+    if args.access_command == "revoke":
+        access = config.revoke_access()
+        config.token = generate_token()
+        save_config(config, cfg_path, overwrite=True)
+        print(json.dumps({"access": access, "token_rotated": True}, indent=2, ensure_ascii=False))
+        return 0
+    return 2
 
 
 def _workspace_command(args, config: AppConfig, cfg_path: Path) -> int:
@@ -379,6 +442,7 @@ def _verify_actions(config: AppConfig, base_url: str, timeout: int) -> dict:
         "base_url": base,
         "active_workspace": config.active_workspace,
         "workspace": str(config.workspace),
+        "access": config.access_status(),
         "checks": checks,
     }
 
@@ -498,6 +562,9 @@ def _api_smoke(timeout: int) -> dict:
             checks.append(_api_check("list_files_after_switch", lambda: _api_post(f"{base_url}/list_files", {"path": ".", "recursive": False}, config.token, timeout), lambda body: body["entries"][0]["path"] == "beta.txt"))
             checks.append(_api_check_status("path_escape_blocked", lambda: _api_post(f"{base_url}/read_file", {"path": "../outside.txt"}, config.token, timeout), 400))
             checks.append(_api_check_status("dangerous_command_blocked", lambda: _api_post(f"{base_url}/exec_command", {"command": "rm -rf /tmp/nope"}, config.token, timeout), 400))
+            config.revoke_access()
+            save_config(config, config_path, overwrite=True)
+            checks.append(_api_check_status("expired_access_blocked", lambda: _api_post(f"{base_url}/workspace_status", {}, config.token, timeout), 403))
         finally:
             server.shutdown()
             server.server_close()

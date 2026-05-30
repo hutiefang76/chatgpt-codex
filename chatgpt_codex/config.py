@@ -1,9 +1,9 @@
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from .security import generate_token
 
@@ -52,6 +52,7 @@ class AppConfig:
     host: str = "127.0.0.1"
     port: int = 8766
     public_base_url: str = "https://example.com"
+    access_expires_at: str = ""
 
     def __post_init__(self) -> None:
         if not self.workspaces:
@@ -86,6 +87,7 @@ class AppConfig:
             host=str(data.get("host", "127.0.0.1")),
             port=int(data.get("port", 8766)),
             public_base_url=str(data.get("public_base_url", "https://example.com")).rstrip("/"),
+            access_expires_at=str(data.get("access_expires_at", "")),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -94,6 +96,7 @@ class AppConfig:
             "host": self.host,
             "port": self.port,
             "public_base_url": self.public_base_url.rstrip("/"),
+            "access_expires_at": self.access_expires_at,
             "workspaces": {name: str(path) for name, path in sorted(self.workspaces.items())},
             "active_workspace": self.active_workspace,
         }
@@ -116,6 +119,43 @@ class AppConfig:
             "active_workspace": self.active_workspace,
             "workspace": str(self.active_workspace_path()),
             "workspaces": self.workspace_entries(),
+            "access": self.access_status(),
+        }
+
+    def grant_access(self, ttl_minutes: int) -> Dict[str, object]:
+        ttl = max(1, int(ttl_minutes))
+        expires = datetime.now(timezone.utc) + timedelta(minutes=ttl)
+        self.access_expires_at = expires.isoformat()
+        return self.access_status()
+
+    def revoke_access(self) -> Dict[str, object]:
+        self.access_expires_at = datetime.now(timezone.utc).isoformat()
+        return self.access_status()
+
+    def access_status(self, now: Optional[datetime] = None) -> Dict[str, object]:
+        current = now or datetime.now(timezone.utc)
+        try:
+            expires = _parse_access_expires_at(self.access_expires_at)
+        except ValueError:
+            return {
+                "mode": "invalid",
+                "active": False,
+                "expires_at": self.access_expires_at,
+                "seconds_remaining": 0,
+            }
+        if expires is None:
+            return {
+                "mode": "no_expiry",
+                "active": True,
+                "expires_at": "",
+                "seconds_remaining": None,
+            }
+        seconds = int((expires - current).total_seconds())
+        return {
+            "mode": "expires_at",
+            "active": seconds > 0,
+            "expires_at": expires.isoformat(),
+            "seconds_remaining": max(0, seconds),
         }
 
     def add_workspace(self, name: str, path: Path, activate: bool = False) -> None:
@@ -269,3 +309,13 @@ def _validate_workspace_name(name: str) -> str:
     if any(char in value for char in "/\\:"):
         raise ValueError("workspace name cannot contain path separators or ':'")
     return value
+
+
+def _parse_access_expires_at(value: str) -> Optional[datetime]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)

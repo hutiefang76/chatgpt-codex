@@ -123,6 +123,10 @@ AI-native 管理：
 - 隧道或自定义入口给出最终公网 URL 后，用 `chatgpt-codex set-public-url <url>` 保存。
 - Use `chatgpt-codex api-smoke` before browser work to test Action interfaces directly in temporary workspaces.
 - 浏览器操作前用 `chatgpt-codex api-smoke` 在临时工作区直接测试 Action 接口。
+- Use `chatgpt-codex access grant --ttl-minutes <minutes>` or `chatgpt-codex serve --ttl-minutes <minutes>` so exposed Actions have a clear expiry.
+- 用 `chatgpt-codex access grant --ttl-minutes <minutes>` 或 `chatgpt-codex serve --ttl-minutes <minutes>` 给暴露的 Actions 设置明确有效期。
+- Use `chatgpt-codex rotate-token` when the ChatGPT Builder auth field must be refreshed, and `chatgpt-codex access revoke` when exposure should stop immediately.
+- 需要刷新 ChatGPT Builder 鉴权字段时用 `chatgpt-codex rotate-token`，需要立即停止暴露时用 `chatgpt-codex access revoke`。
 - Use `chatgpt-codex verify` for the final health/schema/read-only action check.
 - 用 `chatgpt-codex verify` 做最终健康检查、schema 和只读 Action 验证。
 - `status` reports whether a token exists but never prints the bearer token itself.
@@ -222,7 +226,7 @@ Start the local server:
 启动本地服务：
 
 ```bash
-chatgpt-codex serve
+chatgpt-codex serve --ttl-minutes 120
 ```
 
 If the user chooses the built-in quick tunnel:
@@ -239,6 +243,7 @@ After the public URL is known:
 
 ```bash
 chatgpt-codex set-public-url "$PUBLIC_BASE_URL"
+chatgpt-codex access status
 chatgpt-codex verify
 ```
 
@@ -282,6 +287,7 @@ Preferred AI-native verification:
 
 ```bash
 chatgpt-codex api-smoke
+chatgpt-codex access status
 chatgpt-codex verify
 ```
 

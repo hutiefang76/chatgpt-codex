@@ -28,8 +28,21 @@ def create_server(config: AppConfig, config_file: Optional[Path] = None) -> Thre
 
     config_lock = Lock()
 
+    def reload_config_locked() -> None:
+        if config_file is None or not Path(config_file).exists():
+            return
+        latest = load_config(Path(config_file))
+        config.token = latest.token
+        config.workspaces = latest.workspaces
+        config.active_workspace = latest.active_workspace
+        config.host = latest.host
+        config.port = latest.port
+        config.public_base_url = latest.public_base_url
+        config.access_expires_at = latest.access_expires_at
+
     def current_tools():
         with config_lock:
+            reload_config_locked()
             workspace = config.active_workspace_path()
         return WorkspaceTools(workspace), CommandExecutor(workspace)
 
@@ -39,16 +52,17 @@ def create_server(config: AppConfig, config_file: Optional[Path] = None) -> Thre
 
     def workspace_status() -> Dict[str, object]:
         with config_lock:
+            reload_config_locked()
             return config.workspace_status()
 
     def public_base_url() -> str:
         with config_lock:
-            if config_file is not None and Path(config_file).exists():
-                config.public_base_url = load_config(Path(config_file)).public_base_url
+            reload_config_locked()
             return config.public_base_url.rstrip("/")
 
     def switch_workspace(name: str) -> Dict[str, object]:
         with config_lock:
+            reload_config_locked()
             result = config.switch_workspace(name)
             persist_config()
             return result
@@ -65,6 +79,7 @@ def create_server(config: AppConfig, config_file: Optional[Path] = None) -> Thre
                         "workspace": status["workspace"],
                         "active_workspace": status["active_workspace"],
                         "public_base_url": public_base_url(),
+                        "access": status["access"],
                     }
                 )
                 return
@@ -77,8 +92,10 @@ def create_server(config: AppConfig, config_file: Optional[Path] = None) -> Thre
             self._send_json({"error": "not found"}, status=404)
 
         def do_POST(self):
-            if not self._authorized():
-                self._send_json({"error": "missing or invalid bearer token"}, status=401)
+            auth_error = self._auth_error()
+            if auth_error is not None:
+                payload, status = auth_error
+                self._send_json(payload, status=status)
                 return
             workspace_tools, executor = current_tools()
             actions: Dict[str, Callable[[Dict[str, Any]], Dict[str, object]]] = {
@@ -123,9 +140,16 @@ def create_server(config: AppConfig, config_file: Optional[Path] = None) -> Thre
         def log_message(self, format, *args):
             return
 
-        def _authorized(self) -> bool:
-            expected = f"Bearer {config.token}"
-            return self.headers.get("Authorization", "") == expected
+        def _auth_error(self):
+            with config_lock:
+                reload_config_locked()
+                expected = f"Bearer {config.token}"
+                access = config.access_status()
+            if self.headers.get("Authorization", "") != expected:
+                return {"error": "missing or invalid bearer token"}, 401
+            if not access["active"]:
+                return {"error": "access session expired", "access": access}, 403
+            return None
 
         def _read_json(self) -> Dict[str, Any]:
             length = int(self.headers.get("Content-Length", "0"))

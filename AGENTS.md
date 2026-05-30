@@ -112,7 +112,7 @@ Start the local server:
 启动本地服务：
 
 ```bash
-chatgpt-codex serve
+chatgpt-codex serve --ttl-minutes 120
 ```
 
 If the user chose the built-in quick tunnel, start:
@@ -143,6 +143,7 @@ Verify these before saying setup is complete:
 
 ```bash
 chatgpt-codex api-smoke
+chatgpt-codex access status
 curl --noproxy '*' "$PUBLIC_BASE_URL/health"
 curl --noproxy '*' "$PUBLIC_BASE_URL/openapi.json"
 ```

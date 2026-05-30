@@ -11,6 +11,7 @@ class DocumentationTests(unittest.TestCase):
             root / "AGENTS.md",
             root / "CLAUDE.md",
             root / "docs" / "AI_NATIVE.md",
+            root / "docs" / "SECURITY.md",
             root / "skills" / "chatgpt-codex" / "SKILL.md",
             root / "skills" / "chatgpt-codex" / "references" / "agent-handoff.md",
             root / "docs" / "superpowers" / "plans" / "2026-05-29-chatgpt-codex.md",
@@ -77,6 +78,9 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("switch_workspace", readme)
         self.assertIn("chatgpt-codex set-public-url", readme)
         self.assertIn("chatgpt-codex verify", readme)
+        self.assertIn("chatgpt-codex access status", readme)
+        self.assertIn("chatgpt-codex rotate-token", readme)
+        self.assertIn("chatgpt-codex access revoke", readme)
         self.assertIn("Closed-loop product flow", readme)
         self.assertIn("Closed Loop", skill)
         self.assertIn("built-in-quick-tunnel", skill)
