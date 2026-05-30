@@ -20,6 +20,6 @@ chatgpt-codex 已完成 macOS 安装。
 Next:
 下一步:
   . .venv/bin/activate
-  chatgpt-codex init --workspace /absolute/path/to/project --public-base-url https://actions.example.com
+  chatgpt-codex channel register --workspace /absolute/path/to/project --public-base-url https://actions.example.com
   chatgpt-codex serve
 MSG
