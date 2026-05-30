@@ -52,6 +52,7 @@ def main(argv=None) -> int:
     subcommands.add_parser("openapi", help="Print the OpenAPI document. / 打印 OpenAPI 文档。")
     subcommands.add_parser("gpt-instructions", help="Print Custom GPT setup instructions. / 打印 Custom GPT 配置说明。")
     subcommands.add_parser("route-options", help="Explain HTTPS route choices. / 说明 HTTPS 入口选项。")
+    subcommands.add_parser("chatgpt-preflight", help="Print ChatGPT Builder prerequisites and setup boundaries. / 打印 ChatGPT Builder 前提条件和自动化边界。")
     public_url_parser = subcommands.add_parser("set-public-url", help="Update public_base_url without changing token or workspaces. / 只更新 public_base_url，不改变 token 或工作区。")
     public_url_parser.add_argument("url", help="Public HTTPS base URL. / 公网 HTTPS 根地址。")
     rotate_parser = subcommands.add_parser("rotate-token", help="Rotate the bearer token and print the new token once. / 轮换 bearer token 并只打印一次新 token。")
@@ -65,6 +66,7 @@ def main(argv=None) -> int:
     template_parser = subcommands.add_parser("permissions-template", help="Print or write a permissions template. / 打印或写入授权模板。")
     template_parser.add_argument("--output", default="", help="Optional output path. / 可选输出路径。")
     template_parser.add_argument("--force", action="store_true")
+    subcommands.add_parser("open-chatgpt-login", help="Open ChatGPT login/home in the browser. / 在浏览器打开 ChatGPT 登录或首页。")
     subcommands.add_parser("open-chatgpt", help="Open ChatGPT Builder in the browser. / 在浏览器打开 ChatGPT Builder。")
     subcommands.add_parser("agent-brief", help="Print AI-native setup handoff for Codex or Claude. / 打印给 Codex 或 Claude 的自动配置说明。")
     subcommands.add_parser("ai-native", help="Alias of agent-brief. / agent-brief 的别名。")
@@ -162,6 +164,17 @@ def main(argv=None) -> int:
     if args.command == "route-options":
         print(_route_options())
         return 0
+    if args.command == "chatgpt-preflight":
+        print(json.dumps(_chatgpt_preflight(cfg_path, language), indent=2, ensure_ascii=False))
+        return 0
+    if args.command == "open-chatgpt-login":
+        url = "https://chatgpt.com/"
+        opened = _open_chrome_or_default(url)
+        if opened:
+            print(f"Opened ChatGPT login/home / 已打开 ChatGPT 登录或首页: {url}")
+        else:
+            print(f"Failed to open ChatGPT login/home / 打开 ChatGPT 登录或首页失败: {url}", file=sys.stderr)
+        return 0 if opened else 1
     if args.command == "open-chatgpt":
         url = "https://chatgpt.com/gpts/editor"
         opened = _open_chrome_or_default(url)
@@ -424,6 +437,8 @@ def _ai_command_catalog() -> dict:
             "chatgpt-codex workspace switch <name>",
         ],
         "chatgpt_builder": [
+            "chatgpt-codex chatgpt-preflight",
+            "chatgpt-codex open-chatgpt-login",
             "chatgpt-codex gpt-instructions",
             "chatgpt-codex openapi",
             "chatgpt-codex token",
@@ -880,6 +895,60 @@ existing-https-route:
 - 域名：不需要，前提是已有公网 HTTPS URL
 - ChatGPT 网页 Actions：可以，使用已有 HTTPS 地址
 """
+
+
+def _chatgpt_preflight(cfg_path: Path, language: str = "en") -> dict:
+    result = {
+        "language": language,
+        "chatgpt_login": {
+            "required": True,
+            "login_url": "https://chatgpt.com/",
+            "open_command": "chatgpt-codex open-chatgpt-login",
+            "agent_rule": "Open the login page and wait for the human to finish. Do not ask for passwords, cookies, sessions, or API keys.",
+        },
+        "account_requirements": {
+            "can_create_and_edit_gpts": ["ChatGPT Pro", "ChatGPT Plus", "ChatGPT Team", "ChatGPT Enterprise", "ChatGPT Edu"],
+            "free_tier": "Free users may have limited access to existing GPTs, but should not be treated as eligible to create or edit GPTs with Actions.",
+            "actions_model_note": "Custom Actions are not available in Pro mode models. Use a non-Pro model that supports Actions.",
+        },
+        "builder_automation": {
+            "editor_url": "https://chatgpt.com/gpts/editor",
+            "open_command": "chatgpt-codex open-chatgpt",
+            "fully_configurable_by_local_api": False,
+            "why": "ChatGPT Builder is a web-only editor and does not provide a local project API for creating or saving GPT Actions.",
+            "agent_rule": "After human login, inspect the Builder page. Continue only if the editor loads and the Actions section is available.",
+        },
+        "local_requirements": {
+            "public_https_required_for_chatgpt_web": True,
+            "local_only_is_for_tests": True,
+            "bearer_token_required": True,
+            "save_visibility": "Only me unless the user intentionally wants to share access.",
+        },
+        "configured": False,
+    }
+    if cfg_path.exists():
+        config = load_config(cfg_path)
+        result.update(
+            {
+                "configured": True,
+                "active_workspace": config.active_workspace,
+                "workspace": str(config.workspace),
+                "public_base_url": config.public_base_url.rstrip("/"),
+                "openapi_url": f"{config.public_base_url.rstrip('/')}/openapi.json",
+                "privacy_url": f"{config.public_base_url.rstrip('/')}/privacy",
+                "token_configured": bool(config.token),
+                "access": config.access_status(),
+                "builder_fields": {
+                    "name": "Local Coding Bridge",
+                    "description": "Access and edit one authorized local workspace through a private bearer-protected Action bridge.",
+                    "authentication": "API key / Bearer",
+                    "schema_import_url": f"{config.public_base_url.rstrip('/')}/openapi.json",
+                    "privacy_policy_url": f"{config.public_base_url.rstrip('/')}/privacy",
+                    "token_command": "chatgpt-codex token",
+                },
+            }
+        )
+    return result
 
 
 def _access_plan_summary(access_plan: str) -> str:

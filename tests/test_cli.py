@@ -229,6 +229,41 @@ class CliTests(unittest.TestCase):
         self.assertIn("chatgpt-codex api-smoke", catalog["inspect"])
         self.assertIn("chatgpt-codex access revoke", catalog["access"])
         self.assertIn("chatgpt-codex token", catalog["chatgpt_builder"])
+        self.assertIn("chatgpt-codex chatgpt-preflight", catalog["chatgpt_builder"])
+        self.assertIn("chatgpt-codex open-chatgpt-login", catalog["chatgpt_builder"])
+
+    def test_chatgpt_preflight_reports_plan_and_builder_boundaries_without_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            run_quietly(
+                [
+                    "--config",
+                    str(config_path),
+                    "init",
+                    "--workspace",
+                    str(workspace),
+                    "--workspace-name",
+                    "demo",
+                    "--public-base-url",
+                    "https://actions.example.com",
+                ]
+            )
+            token = load_config(config_path).token
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["--config", str(config_path), "chatgpt-preflight"])
+
+            preflight = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(preflight["chatgpt_login"]["required"])
+            self.assertIn("ChatGPT Plus", preflight["account_requirements"]["can_create_and_edit_gpts"])
+            self.assertFalse(preflight["builder_automation"]["fully_configurable_by_local_api"])
+            self.assertEqual(preflight["builder_fields"]["authentication"], "API key / Bearer")
+            self.assertEqual(preflight["builder_fields"]["schema_import_url"], "https://actions.example.com/openapi.json")
+            self.assertNotIn(token, stdout.getvalue())
 
     def test_doctor_without_config_prints_next_step_instead_of_traceback(self):
         with tempfile.TemporaryDirectory() as tmp:

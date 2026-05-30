@@ -19,7 +19,7 @@ The local server runs with only the Python standard library. ChatGPT web cannot 
 
 - Supported OS: macOS and Windows.
 - Python 3.9 or newer.
-- A ChatGPT account or plan that can create Custom GPTs with Actions.
+- A ChatGPT account or plan that can create Custom GPTs with Actions. Do not assume Free tier can create or edit GPTs; run `chatgpt-codex chatgpt-preflight` and check the Builder page after login.
 - Local OS permission to read and write the workspace you configure.
 - Optional: `cloudflared`, only for the built-in `chatgpt-codex tunnel` command.
 - Optional: a Cloudflare-managed domain if you want a stable hostname such as `chatgpt-codex.example.com`.
@@ -122,6 +122,7 @@ Agents should use machine-readable commands first:
 ```bash
 chatgpt-codex --lang en status
 chatgpt-codex ai-commands
+chatgpt-codex chatgpt-preflight
 chatgpt-codex channel status
 chatgpt-codex api-smoke
 chatgpt-codex access status
@@ -133,6 +134,8 @@ chatgpt-codex verify
 `status` reports config paths, active workspace, registered workspaces, local/public URLs, helper availability, language, and whether a token is configured. It never prints the bearer token itself.
 
 `ai-commands` prints the local command catalog for language selection, setup, inspection, workspace switching, Builder fields, runtime, and access lifecycle.
+
+`chatgpt-preflight` prints the ChatGPT-side prerequisites, the login URL, the Builder automation boundary, and the exact Builder fields derived from the current local config without printing the bearer token.
 
 `api-smoke` starts a temporary local server and tests the Action interfaces directly: auth, health, schema, workspace status, workspace listing, file list/read/write/search/patch, command execution, workspace switching, and safety blocks. It does not touch your real workspace.
 
@@ -165,14 +168,16 @@ Low-level commands are still available for advanced use: `chatgpt-codex rotate-t
 ## Closed-loop product flow
 
 1. Collect minimal human inputs and local authorization.
-2. Install and run `channel register` to create `.chatgpt-codex/config.json`.
-3. Register authorized workspaces and select `active_workspace`.
-4. Start the local server.
-5. Start or provide a public HTTPS route.
-6. Save the final public URL with `channel renew --public-base-url <url>` or `set-public-url`.
-7. Run `api-smoke` for direct interface testing, then `verify` against the running route.
-8. Configure ChatGPT Builder with `gpt-instructions`, `openapi.json`, and `token`.
-9. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
+2. Run `chatgpt-preflight`; if needed, open `open-chatgpt-login` and wait for the human to finish login.
+3. Open `open-chatgpt` or the Builder page and confirm the account can create or edit a GPT with Actions.
+4. Install and run `channel register` to create `.chatgpt-codex/config.json`.
+5. Register authorized workspaces and select `active_workspace`.
+6. Start the local server.
+7. Start or provide a public HTTPS route.
+8. Save the final public URL with `channel renew --public-base-url <url>` or `set-public-url`.
+9. Run `api-smoke` for direct interface testing, then `verify` against the running route.
+10. Configure ChatGPT Builder with `gpt-instructions`, `openapi.json`, and `token`.
+11. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
 
 ## Manual Setup
 
@@ -261,8 +266,12 @@ The GPT should call `workspace_status`, `list_workspaces`, and `switch_workspace
 If browser automation is approved in `.chatgpt-codex/permissions.json`, Codex can open ChatGPT Builder after the user logs in manually:
 
 ```bash
+chatgpt-codex chatgpt-preflight
+chatgpt-codex open-chatgpt-login
 chatgpt-codex open-chatgpt
 ```
+
+The login step should be an explicit handoff: open the page for the user, wait for them to finish, then inspect the Builder page. The local CLI cannot prove account eligibility by itself; the reliable check is whether `https://chatgpt.com/gpts/editor` loads and exposes the Configure and Actions controls. ChatGPT Builder configuration is web-only, so the local code generates and verifies the fields while a human or browser automation fills the web editor.
 
 Print the exact setup text:
 

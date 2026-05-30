@@ -56,6 +56,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 首次注册通道时运行 `chatgpt-codex channel register --workspace <path> --public-base-url <url>`。
 - Use `chatgpt-codex status` and `chatgpt-codex ai-commands` for machine-readable local management.
 - 使用 `chatgpt-codex status` 和 `chatgpt-codex ai-commands` 做机器可读的本地管理。
+- Run `chatgpt-codex chatgpt-preflight` before browser setup. It reports account prerequisites, login handoff commands, Builder limits, and Builder fields without printing the bearer token.
+- 浏览器配置前运行 `chatgpt-codex chatgpt-preflight`。它会报告账号前提、登录交接命令、Builder 边界和 Builder 字段，但不会打印 bearer token。
 - After a tunnel or route provides the final URL, run `chatgpt-codex channel renew --public-base-url <url>` or `chatgpt-codex set-public-url <url>`.
 - 隧道或入口给出最终 URL 后，运行 `chatgpt-codex channel renew --public-base-url <url>` 或 `chatgpt-codex set-public-url <url>`。
 - Add extra authorized projects with `chatgpt-codex workspace add --name <name> --path <path>`.
@@ -72,6 +74,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 没有 Cloudflare 登录/域名时使用临时 HTTPS 隧道；两者都提供时使用 `chatgpt-codex.<domain>`。
 - Open ChatGPT Builder with `chatgpt-codex open-chatgpt` only after browser automation is approved and the user has logged in manually.
 - 只有在用户授权浏览器自动化并手动登录后，才用 `chatgpt-codex open-chatgpt` 打开 ChatGPT Builder。
+- If the user is not logged in, run `chatgpt-codex open-chatgpt-login`, wait for the human to finish login, then inspect `https://chatgpt.com/gpts/editor`. Stop if the editor or Actions section is unavailable.
+- 如果用户未登录，运行 `chatgpt-codex open-chatgpt-login`，等待真人完成登录，再检查 `https://chatgpt.com/gpts/editor`。如果编辑器或 Actions 区域不可用，停止。
 - Ensure GPT instructions mention `workspace_status`, `list_workspaces`, and `switch_workspace` for showing and switching the current local directory.
 - 确保 GPT Instructions 写明用 `workspace_status`、`list_workspaces` 和 `switch_workspace` 显示并切换当前本地目录。
 - Run `chatgpt-codex api-smoke` before browser work to test the Action interfaces directly in temporary workspaces.

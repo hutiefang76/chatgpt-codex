@@ -12,24 +12,30 @@ Use this skill to turn this repository into a working local coding bridge for Ch
 ## Workflow / 流程
 
 1. Ask only for the minimal human inputs before changing local state.
-2. Install the local launcher.
-3. Save setup permissions in `.chatgpt-codex/permissions.json`.
-4. Create config for the target workspace.
-5. Start the local server and set up or use a public HTTPS route when ChatGPT web access is needed.
-6. Open ChatGPT Builder in Chrome only after browser automation is approved and the user has logged in manually.
-7. Verify health, schema, and one authenticated read-only action.
-8. Print or apply the final ChatGPT Builder fields.
+2. Run `chatgpt-codex chatgpt-preflight` before browser work.
+3. If login is needed, open `chatgpt-codex open-chatgpt-login` and wait for the human to finish login.
+4. Open ChatGPT Builder and confirm the account can create or edit a GPT with Actions.
+5. Install the local launcher.
+6. Save setup permissions in `.chatgpt-codex/permissions.json`.
+7. Create config for the target workspace.
+8. Start the local server and set up or use a public HTTPS route when ChatGPT web access is needed.
+9. Open ChatGPT Builder in Chrome only after browser automation is approved and the user has logged in manually.
+10. Verify health, schema, and one authenticated read-only action.
+11. Print or apply the final ChatGPT Builder fields.
 
 中文：
 
 1. 修改本地状态前，只向用户询问真人必须提供的最小信息。
-2. 安装本地启动器。
-3. 将配置授权保存到 `.chatgpt-codex/permissions.json`。
-4. 为目标 workspace 创建配置。
-5. 启动本地服务；当需要 ChatGPT 网页端访问时，配置或使用公网 HTTPS 入口。
-6. 只有在用户授权浏览器自动化并手动登录后，才在 Chrome 中打开 ChatGPT Builder。
-7. 验证健康检查、schema，以及一个带鉴权的只读 Action。
-8. 打印或填写最终可用于 ChatGPT Builder 的字段。
+2. 浏览器操作前运行 `chatgpt-codex chatgpt-preflight`。
+3. 如需登录，运行 `chatgpt-codex open-chatgpt-login` 打开页面，并等待真人完成登录。
+4. 打开 ChatGPT Builder，确认账号可以创建或编辑带 Actions 的 GPT。
+5. 安装本地启动器。
+6. 将配置授权保存到 `.chatgpt-codex/permissions.json`。
+7. 为目标 workspace 创建配置。
+8. 启动本地服务；当需要 ChatGPT 网页端访问时，配置或使用公网 HTTPS 入口。
+9. 只有在用户授权浏览器自动化并手动登录后，才在 Chrome 中打开 ChatGPT Builder。
+10. 验证健康检查、schema，以及一个带鉴权的只读 Action。
+11. 打印或填写最终可用于 ChatGPT Builder 的字段。
 
 For a copyable user prompt and detailed checklist, read `references/agent-handoff.md`.
 
@@ -91,6 +97,8 @@ Route defaults:
 - 仅在测试或用户明确要求时使用仅本地模式。
 - The ChatGPT account must support GPT Actions to create or configure the GPT. Save it private unless the user intentionally shares access.
 - ChatGPT 账号必须支持 GPT Actions 才能创建或配置 GPT。除非用户明确要共享访问，否则保存为私有。
+- Treat Free tier as not eligible for creating or editing GPTs. Paid plans such as Pro, Plus, Team, Enterprise, and Edu can create GPTs, but custom Actions do not run in Pro mode models. If the editor does not expose Actions, stop before local setup work becomes wasted effort.
+- 将免费账号视为不能创建或编辑 GPT。Pro、Plus、Team、Enterprise、Edu 等付费套餐可以创建 GPT，但自定义 Actions 不能运行在 Pro mode 模型中。如果编辑器没有显示 Actions，在继续本地配置前停止。
 
 Never ask for ChatGPT passwords, browser cookies, OpenAI API keys, or unrelated secrets.
 
@@ -117,6 +125,10 @@ AI-native 管理：
 
 - Start with `chatgpt-codex status` to read machine-readable local state.
 - 先运行 `chatgpt-codex status` 读取机器可读的本地状态。
+- Use `chatgpt-codex chatgpt-preflight` before browser setup. It prints plan prerequisites, login handoff commands, Builder automation boundaries, and Builder fields without printing the token.
+- 浏览器配置前先用 `chatgpt-codex chatgpt-preflight`。它会打印套餐前提、登录交接命令、Builder 自动化边界和 Builder 字段，但不会打印 token。
+- Use `chatgpt-codex open-chatgpt-login` when the user must log in. Open the page, wait for the user to say login is complete, then continue.
+- 用户需要登录时用 `chatgpt-codex open-chatgpt-login`。打开页面，等待用户确认登录完成，再继续。
 - Use `chatgpt-codex ai-commands` to discover the local command catalog.
 - 用 `chatgpt-codex ai-commands` 获取本地命令目录。
 - Use `chatgpt-codex channel register --workspace <path> --public-base-url <url>` for first registration. It stores the public URL and token in `.chatgpt-codex/config.json` under the local repository root.
@@ -254,12 +266,13 @@ If the user approved browser automation and is logged into ChatGPT in Chrome:
 如果用户已授权浏览器自动化，并且已在 Chrome 登录 ChatGPT：
 
 ```bash
+chatgpt-codex chatgpt-preflight
 chatgpt-codex open-chatgpt
 ```
 
-Use Chrome automation to create or edit the GPT, paste `chatgpt-codex gpt-instructions`, import the schema URL, set Bearer auth with `chatgpt-codex token`, and save as private. Do not request or store ChatGPT credentials, cookies, or API keys.
+Use Chrome automation to create or edit the GPT, paste `chatgpt-codex gpt-instructions`, import the schema URL, set Bearer auth with `chatgpt-codex token`, and save as private. Do not request or store ChatGPT credentials, cookies, or API keys. The local project cannot create or save a GPT through a public local API; the Builder page must be filled by browser automation or by the human after login.
 
-使用 Chrome 自动化创建或编辑 GPT，粘贴 `chatgpt-codex gpt-instructions`，导入 schema URL，用 `chatgpt-codex token` 设置 Bearer 鉴权，并保存为私有。不要索要或保存 ChatGPT 凭据、cookie 或 API key。
+使用 Chrome 自动化创建或编辑 GPT，粘贴 `chatgpt-codex gpt-instructions`，导入 schema URL，用 `chatgpt-codex token` 设置 Bearer 鉴权，并保存为私有。不要索要或保存 ChatGPT 凭据、cookie 或 API key。本地项目不能通过公开本地 API 创建或保存 GPT；登录后必须由浏览器自动化或真人填写 Builder 网页。
 
 In the GPT conversation, project switching flow is:
 
