@@ -205,6 +205,29 @@ chatgpt-codex channel renew --ttl-minutes 120
 10. 用 `builder configure --mode ui` 配置 ChatGPT Builder，或在 route 验证后使用 `builder sniff` 加 `builder configure --mode api`。
 11. 在 GPT 对话里，文件或命令操作前使用 `workspace_status`、`list_workspaces` 和 `switch_workspace`。
 
+## 一键配置（确定性）
+
+`chatgpt-codex bootstrap` 用一条命令完成本地这一侧：注册通道、起本地服务、起临时隧道并自动捕获公网 URL，然后验证并打印可粘贴到 ChatGPT Builder 的字段。每一步都是确定性的、无需 AI。它唯一替你做不了的，是登录 ChatGPT 和 Builder 里最后那一下「添加 Action + 粘贴 token + 保存」。
+
+```bash
+chatgpt-codex bootstrap --workspace /absolute/path/to/your/project
+```
+
+用你自己的 HTTPS 入口替代隧道，或仅本地测试：
+
+```bash
+chatgpt-codex bootstrap --workspace /absolute/path/to/your/project --public-base-url https://actions.example.com
+chatgpt-codex bootstrap --workspace /absolute/path/to/your/project --no-tunnel
+```
+
+它会让服务和隧道保持运行直到 `Ctrl-C`。当它打印出 `verify_ok: true` 的「桥已就绪」后，登录并完成 Builder 步骤：
+
+```bash
+chatgpt-codex builder open-login
+chatgpt-codex builder configure --mode ui
+chatgpt-codex builder smoke
+```
+
 ## 手动配置
 
 macOS 终端：
@@ -239,7 +262,7 @@ chatgpt-codex serve
 
 ## 公网 HTTPS 入口
 
-若要让 ChatGPT 网页端调用本地 API，需要通过公网 HTTPS 入口暴露服务。使用内置临时隧道时，在另一个终端运行：
+若要让 ChatGPT 网页端调用本地 API，需要通过公网 HTTPS 入口暴露服务。使用内置临时隧道时，在另一个终端运行——它会自动捕获临时的 `https://...trycloudflare.com` 地址并写入配置，于是正在运行的 `serve` 无需手动 `channel renew` 就能生效：
 
 ```bash
 chatgpt-codex tunnel

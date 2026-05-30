@@ -205,6 +205,29 @@ Low-level commands are still available for advanced use: `chatgpt-codex rotate-t
 10. Configure ChatGPT Builder with `builder configure --mode ui`, or use `builder sniff` plus `builder configure --mode api` after route validation.
 11. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
 
+## One-command setup (deterministic)
+
+`chatgpt-codex bootstrap` runs the whole local side in one command — register a channel, start the server, start the quick tunnel and auto-capture its public URL, then verify and print the exact ChatGPT Builder fields. Every step is deterministic and needs no AI. The only things it cannot do for you are the ChatGPT login and the final Builder "Add Action + paste token + Save" click.
+
+```bash
+chatgpt-codex bootstrap --workspace /absolute/path/to/your/project
+```
+
+Use your own HTTPS route instead of a tunnel, or test locally:
+
+```bash
+chatgpt-codex bootstrap --workspace /absolute/path/to/your/project --public-base-url https://actions.example.com
+chatgpt-codex bootstrap --workspace /absolute/path/to/your/project --no-tunnel
+```
+
+It keeps the server and tunnel running until `Ctrl-C`. Once it prints "Bridge ready" with `verify_ok: true`, log in and finish the Builder steps:
+
+```bash
+chatgpt-codex builder open-login
+chatgpt-codex builder configure --mode ui
+chatgpt-codex builder smoke
+```
+
 ## Manual Setup
 
 macOS Terminal:
@@ -239,7 +262,7 @@ By default, access stays active until the server is stopped or `chatgpt-codex ch
 
 ## Public HTTPS Route
 
-For ChatGPT web to call the local API, expose it through a public HTTPS route. With the built-in quick tunnel, run in another terminal:
+For ChatGPT web to call the local API, expose it through a public HTTPS route. With the built-in quick tunnel, run in another terminal — it captures the temporary `https://...trycloudflare.com` URL and saves it to config automatically, so a running `serve` picks it up without a manual `channel renew`:
 
 ```bash
 chatgpt-codex tunnel

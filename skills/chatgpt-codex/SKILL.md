@@ -168,6 +168,8 @@ AI-native management:
 
 AI-native 管理：
 
+- Use `chatgpt-codex bootstrap --workspace <path>` to do the whole local side in one deterministic command (register, serve, tunnel with auto-captured URL, verify, print Builder fields). It needs no AI; only ChatGPT login and the final Builder save stay manual.
+- 用 `chatgpt-codex bootstrap --workspace <path>` 一条确定性命令完成本地全部步骤（注册、起服务、起隧道并自动捕获 URL、验证、打印 Builder 字段）。无需 AI；只有 ChatGPT 登录和 Builder 最后保存仍需手动。
 - Start with `chatgpt-codex status` to read machine-readable local state.
 - 先运行 `chatgpt-codex status` 读取机器可读的本地状态。
 - `status` reports `node_found`, `npx_found`, and `builder_profile_path`; Node/npx are needed for Playwright Builder automation, not for the local server.

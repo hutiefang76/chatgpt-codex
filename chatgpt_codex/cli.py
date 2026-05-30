@@ -2,11 +2,13 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import webbrowser
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -32,6 +34,9 @@ from .config import (
 from .openapi import make_openapi_document
 from .security import generate_token
 from .server import create_server
+
+
+TRYCLOUDFLARE_RE = re.compile(r"https://[a-z0-9][a-z0-9-]*\.trycloudflare\.com")
 
 
 def main(argv=None) -> int:
@@ -142,6 +147,17 @@ def main(argv=None) -> int:
 
     tunnel_parser = subcommands.add_parser("tunnel", help="Start the built-in cloudflared tunnel to the local server. / 启动内置 cloudflared 隧道。")
     tunnel_parser.add_argument("--cloudflared", default="cloudflared")
+
+    bootstrap_parser = subcommands.add_parser("bootstrap", help="One-shot deterministic setup: register, serve, tunnel (auto-capture URL), verify, and print Builder fields. / 一键确定性配置：注册、起服务、起隧道（自动捕获 URL）、验证并打印 Builder 字段。")
+    bootstrap_parser.add_argument("--workspace", required=True, help="Workspace ChatGPT may access. / ChatGPT 可访问的工作区。")
+    bootstrap_parser.add_argument("--workspace-name", default="", help="Name for this workspace. / 这个工作区的名称。")
+    bootstrap_parser.add_argument("--public-base-url", default="", help="Use this HTTPS URL instead of starting a tunnel. / 使用此 HTTPS URL，不启动隧道。")
+    bootstrap_parser.add_argument("--no-tunnel", action="store_true", help="Do not start a tunnel; verify against the local URL or --public-base-url. / 不启动隧道，对本地 URL 或 --public-base-url 验证。")
+    bootstrap_parser.add_argument("--cloudflared", default="cloudflared")
+    bootstrap_parser.add_argument("--host", default="127.0.0.1")
+    bootstrap_parser.add_argument("--port", type=int, default=8766)
+    bootstrap_parser.add_argument("--timeout", type=int, default=10, help="Verify request timeout seconds. / 验证请求超时秒数。")
+    bootstrap_parser.add_argument("--force", action="store_true", help="Overwrite existing config. / 覆盖已有配置。")
 
     authorize_parser = subcommands.add_parser("authorize", help="Save setup choices and permissions. / 保存配置选项和授权。")
     authorize_parser.add_argument("--workspace", default=".", help="Workspace ChatGPT may access. / ChatGPT 可访问的工作区。")
@@ -262,6 +278,8 @@ def main(argv=None) -> int:
             return 0
         if args.channel_command == "register":
             return _channel_register(args, cfg_path)
+    if args.command == "bootstrap":
+        return _bootstrap(args, cfg_path)
     if args.command == "doctor" and not cfg_path.exists():
         return _doctor_missing_config(cfg_path)
 
@@ -320,12 +338,7 @@ def main(argv=None) -> int:
             print("\nStopped / 已停止。")
         return 0
     if args.command == "tunnel":
-        local_url = f"http://{config.host}:{config.port}"
-        cloudflared = shutil.which(args.cloudflared)
-        if not cloudflared:
-            print("cloudflared not found in PATH. Install it to use this tunnel command, or provide your own public HTTPS route. / PATH 中找不到 cloudflared；如需使用此 tunnel 命令请先安装，或自行提供公网 HTTPS 入口。", file=sys.stderr)
-            return 1
-        return subprocess.call([cloudflared, "tunnel", "--url", local_url])
+        return _run_tunnel(args, config, cfg_path)
 
     parser.error(f"unknown command: {args.command}")
     return 2
@@ -442,6 +455,7 @@ def _ai_command_catalog() -> dict:
             "CHATGPT_CODEX_LANG=zh chatgpt-codex <command>",
         ],
         "setup": [
+            "chatgpt-codex bootstrap --workspace <path>",
             "chatgpt-codex channel register --workspace <path> --public-base-url <url>",
             "chatgpt-codex init --workspace <path> --workspace-name <name> --public-base-url <url>",
             "chatgpt-codex authorize --workspace <path> --operating-system auto --access-plan <plan> --public-base-url <url>",
@@ -932,6 +946,159 @@ def _api_check_status(name: str, call, expected_status: int) -> dict:
 
 def _json_preview(value: object) -> str:
     return json.dumps(value, ensure_ascii=False)[:300]
+
+
+def _run_tunnel(args, config: AppConfig, cfg_path: Path) -> int:
+    local_url = f"http://{config.host}:{config.port}"
+    cloudflared = shutil.which(args.cloudflared)
+    if not cloudflared:
+        print("cloudflared not found in PATH. Install it to use this tunnel command, or provide your own public HTTPS route. / PATH 中找不到 cloudflared；如需使用此 tunnel 命令请先安装，或自行提供公网 HTTPS 入口。", file=sys.stderr)
+        return 1
+    proc = subprocess.Popen(
+        [cloudflared, "tunnel", "--url", local_url],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    def on_url(_url: str) -> None:
+        print("A running `chatgpt-codex serve` will use this automatically. / 正在运行的 `chatgpt-codex serve` 会自动使用此地址。")
+
+    try:
+        return _pump_cloudflared(proc, config, cfg_path, on_url)
+    except KeyboardInterrupt:
+        _terminate(proc)
+        print("\nTunnel stopped / 隧道已停止。")
+        return 0
+
+
+def _pump_cloudflared(proc, config: AppConfig, cfg_path: Path, on_url) -> int:
+    """Stream cloudflared output, capture the quick-tunnel URL once, and persist it.
+
+    转发 cloudflared 输出，首次捕获临时隧道 URL 并写入配置。
+    """
+
+    captured = ""
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        if not captured:
+            match = TRYCLOUDFLARE_RE.search(line)
+            if match:
+                captured = match.group(0)
+                config.public_base_url = captured.rstrip("/")
+                save_config(config, cfg_path, overwrite=True)
+                print(f"\nPublic URL captured and saved / 已捕获并保存公网 URL: {captured}")
+                print(f"OpenAPI: {captured}/openapi.json")
+                if on_url is not None:
+                    on_url(captured)
+    return proc.wait()
+
+
+def _terminate(proc) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+def _wait_health(base_url: str, timeout: int) -> bool:
+    base = base_url.rstrip("/")
+    deadline = time.monotonic() + max(2, min(int(timeout or 10) * 3, 60))
+    while time.monotonic() < deadline:
+        if _verify_get(f"{base}/health", 5)["ok"]:
+            return True
+        time.sleep(1.0)
+    return False
+
+
+def _bootstrap(args, cfg_path: Path) -> int:
+    workspace_path = Path(args.workspace).expanduser().resolve()
+    workspace_name = args.workspace_name or workspace_path.name or "default"
+    if cfg_path.exists() and not args.force:
+        config = load_config(cfg_path)
+        print(f"Reusing existing config / 复用已有配置: {cfg_path}")
+    else:
+        config = AppConfig(
+            token=generate_token(),
+            workspaces={workspace_name: workspace_path},
+            active_workspace=workspace_name,
+            host=args.host,
+            port=args.port,
+            public_base_url=(args.public_base_url or f"http://{args.host}:{args.port}").rstrip("/"),
+        )
+        save_config(config, cfg_path, overwrite=True)
+        print(f"Config written / 配置已写入: {cfg_path}")
+
+    server = create_server(config, cfg_path)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    print(f"Serving / 正在服务 {config.active_workspace}:{config.workspace} at http://{config.host}:{config.port}")
+
+    use_tunnel = not args.no_tunnel and not args.public_base_url
+    cloudflared = shutil.which(args.cloudflared) if use_tunnel else None
+    if use_tunnel and not cloudflared:
+        print("cloudflared not found; verifying against the local URL instead. Install cloudflared or pass --public-base-url for ChatGPT web. / 未找到 cloudflared；改为对本地 URL 验证。安装 cloudflared 或传入 --public-base-url 才能供 ChatGPT 网页端使用。", file=sys.stderr)
+        use_tunnel = False
+
+    proc = None
+    try:
+        if use_tunnel:
+            local_url = f"http://{config.host}:{config.port}"
+            proc = subprocess.Popen(
+                [cloudflared, "tunnel", "--url", local_url],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            _pump_cloudflared(proc, config, cfg_path, lambda url: _bootstrap_ready(config, cfg_path, url, args.timeout))
+        else:
+            public_url = (args.public_base_url or config.public_base_url or f"http://{config.host}:{config.port}").rstrip("/")
+            config.public_base_url = public_url
+            save_config(config, cfg_path, overwrite=True)
+            _bootstrap_ready(config, cfg_path, public_url, args.timeout)
+            thread.join()
+    except KeyboardInterrupt:
+        print("\nStopped / 已停止。")
+    finally:
+        server.shutdown()
+        server.server_close()
+        if proc is not None:
+            _terminate(proc)
+    return 0
+
+
+def _bootstrap_ready(config: AppConfig, cfg_path: Path, public_url: str, timeout: int) -> None:
+    base = public_url.rstrip("/")
+    reachable = _wait_health(base, timeout)
+    result = _verify_actions(config, base, timeout)
+    print("\n=== Bridge ready / 桥已就绪 ===")
+    print(json.dumps(
+        {
+            "public_base_url": base,
+            "reachable": reachable,
+            "verify_ok": result["ok"],
+            "active_workspace": config.active_workspace,
+            "openapi_url": f"{base}/openapi.json",
+        },
+        indent=2,
+        ensure_ascii=False,
+    ))
+    if not result["ok"]:
+        print("Verify checks / 验证明细:")
+        print(json.dumps(result["checks"], indent=2, ensure_ascii=False))
+    print("\n--- ChatGPT Builder setup / Builder 配置 ---")
+    print(_gpt_instructions(config))
+    print("Bearer token — paste only into the ChatGPT Builder Action auth field / 令牌——只粘贴到 Builder Action 鉴权字段:")
+    print(config.token)
+    print("\n--- Next, needs your ChatGPT login (not automatable here) / 下一步，需要你登录 ChatGPT（这步无法自动） ---")
+    print("1) chatgpt-codex builder open-login")
+    print("2) chatgpt-codex builder configure --mode ui")
+    print("3) chatgpt-codex builder smoke")
+    print("\nServer and tunnel stay up until Ctrl-C. / 服务与隧道保持运行，按 Ctrl-C 停止。")
 
 
 def _platform_label() -> str:
