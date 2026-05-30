@@ -112,7 +112,7 @@ Start the local server:
 启动本地服务：
 
 ```bash
-chatgpt-codex serve --ttl-minutes 120
+chatgpt-codex serve
 ```
 
 If the user chose the built-in quick tunnel, start:

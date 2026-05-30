@@ -123,8 +123,8 @@ AI-native 管理：
 - 隧道或自定义入口给出最终公网 URL 后，用 `chatgpt-codex set-public-url <url>` 保存。
 - Use `chatgpt-codex api-smoke` before browser work to test Action interfaces directly in temporary workspaces.
 - 浏览器操作前用 `chatgpt-codex api-smoke` 在临时工作区直接测试 Action 接口。
-- Use `chatgpt-codex access grant --ttl-minutes <minutes>` or `chatgpt-codex serve --ttl-minutes <minutes>` so exposed Actions have a clear expiry.
-- 用 `chatgpt-codex access grant --ttl-minutes <minutes>` 或 `chatgpt-codex serve --ttl-minutes <minutes>` 给暴露的 Actions 设置明确有效期。
+- Use `chatgpt-codex serve` for normal personal use. Do not add a TTL unless the user explicitly wants a short-lived session.
+- 普通个人自用时使用 `chatgpt-codex serve`。除非用户明确需要短时会话，否则不要添加 TTL。
 - Use `chatgpt-codex rotate-token` when the ChatGPT Builder auth field must be refreshed, and `chatgpt-codex access revoke` when exposure should stop immediately.
 - 需要刷新 ChatGPT Builder 鉴权字段时用 `chatgpt-codex rotate-token`，需要立即停止暴露时用 `chatgpt-codex access revoke`。
 - Use `chatgpt-codex verify` for the final health/schema/read-only action check.
@@ -226,7 +226,7 @@ Start the local server:
 启动本地服务：
 
 ```bash
-chatgpt-codex serve --ttl-minutes 120
+chatgpt-codex serve
 ```
 
 If the user chooses the built-in quick tunnel:

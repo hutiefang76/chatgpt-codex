@@ -14,7 +14,7 @@ Ask me only for the minimal human inputs:
 
 Use a temporary HTTPS tunnel when I do not provide Cloudflare login plus a domain. Use the fixed hostname chatgpt-codex.<domain> when both are available.
 
-Then install, configure, start with a short access TTL, verify, and give me the exact ChatGPT Builder fields. Do not ask me to choose the OS, access plan, port, TTL, or subdomain unless I explicitly override defaults.
+Then install, configure, start, verify, and give me the exact ChatGPT Builder fields. Do not ask me to choose the OS, access plan, port, TTL, or subdomain unless I explicitly override defaults. Do not set a TTL unless I explicitly ask for a short-lived session.
 
 Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelated secrets.
 ```
@@ -31,7 +31,7 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 
 如果我没有同时提供 Cloudflare 登录和域名，使用临时 HTTPS 隧道。如果两者都具备，使用固定域名 chatgpt-codex.<domain>。
 
-然后完成安装、配置、带短时访问有效期启动、验证，并给我可直接填写到 ChatGPT Builder 的字段。除非我明确要覆盖默认值，不要问我选择操作系统、访问方案、端口、TTL 或子域名。
+然后完成安装、配置、启动、验证，并给我可直接填写到 ChatGPT Builder 的字段。除非我明确要覆盖默认值，不要问我选择操作系统、访问方案、端口、TTL 或子域名。除非我明确要求短时会话，否则不要设置 TTL。
 
 不要索要我的 ChatGPT 密码、浏览器 cookie、OpenAI API key 或无关密钥。
 ```
@@ -52,8 +52,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 已用 `chatgpt-codex status` 检查机器可读本地状态，并用 `chatgpt-codex ai-commands` 检查命令目录。
 - Extra projects registered with `chatgpt-codex workspace add` when the user provides more authorized workspaces.
 - 当用户提供更多已授权工作区时，已用 `chatgpt-codex workspace add` 登记额外项目。
-- Local server started with `chatgpt-codex serve --ttl-minutes 120`, or access granted with `chatgpt-codex access grant --ttl-minutes 120`.
-- 已用 `chatgpt-codex serve --ttl-minutes 120` 启动本地服务，或已用 `chatgpt-codex access grant --ttl-minutes 120` 授权访问。
+- Local server started with `chatgpt-codex serve`.
+- 已用 `chatgpt-codex serve` 启动本地服务。
 - Public HTTPS route available when ChatGPT web access is required.
 - 需要 ChatGPT 网页端访问时，公网 HTTPS 路由可用。
 - Final public URL saved with `chatgpt-codex set-public-url`.

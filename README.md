@@ -177,9 +177,6 @@ chatgpt-codex status
 chatgpt-codex ai-commands
 chatgpt-codex api-smoke
 chatgpt-codex access status
-chatgpt-codex access grant --ttl-minutes 120
-chatgpt-codex access revoke
-chatgpt-codex rotate-token --ttl-minutes 120
 chatgpt-codex set-public-url https://your-current-public-url
 chatgpt-codex verify
 ```
@@ -196,9 +193,9 @@ chatgpt-codex verify
 
 `api-smoke` 会启动一个临时本地服务，直接测试 Action 接口：鉴权、健康检查、schema、工作区状态、工作区列表、文件列表/读取/写入/搜索/补丁、命令执行、工作区切换和安全拦截。它不会触碰你的真实 workspace。
 
-`access grant` sets a time limit for Action calls. `chatgpt-codex access revoke` expires access immediately and rotates the token without printing it. `chatgpt-codex rotate-token` prints a new token once for pasting into ChatGPT Builder.
+For personal daily use, leave access without an expiry so long coding sessions and lunch breaks do not interrupt work. `chatgpt-codex access revoke` stops exposure immediately and rotates the token without printing it. `chatgpt-codex rotate-token` prints a new token once for pasting into ChatGPT Builder. `access grant --ttl-minutes <minutes>` is available for demos, borrowed machines, or explicit short-lived sessions.
 
-`access grant` 会给 Action 调用设置有效期。`chatgpt-codex access revoke` 会立即让访问过期，并轮换 token 但不打印。`chatgpt-codex rotate-token` 会一次性打印新 token，供粘贴到 ChatGPT Builder。
+个人日常使用时，默认不设置过期时间，避免长时间写代码或午休后被中断。`chatgpt-codex access revoke` 会立即停止暴露，并轮换 token 但不打印。`chatgpt-codex rotate-token` 会一次性打印新 token，供粘贴到 ChatGPT Builder。`access grant --ttl-minutes <minutes>` 只用于演示、借用机器或明确需要短时会话的场景。
 
 When a temporary tunnel prints a new public URL, save it with `set-public-url` so OpenAPI and Builder fields stay aligned. Use `verify` after the server and public route are running.
 
@@ -211,7 +208,7 @@ Closed-loop product flow:
 1. Collect minimal human inputs and local authorization.
 2. Install and create `.chatgpt-codex/config.json`.
 3. Register authorized workspaces and select `active_workspace`.
-4. Start the local server with an access TTL.
+4. Start the local server.
 5. Start or provide a public HTTPS route.
 6. Save the final public URL with `set-public-url`.
 7. Run `api-smoke` for direct interface testing, then `verify` against the running route.
@@ -223,7 +220,7 @@ Closed-loop product flow:
 1. 收集真人最小输入和本地授权。
 2. 安装并创建 `.chatgpt-codex/config.json`。
 3. 登记已授权工作区并选择 `active_workspace`。
-4. 带访问有效期启动本地服务。
+4. 启动本地服务。
 5. 启动或提供公网 HTTPS 入口。
 6. 用 `set-public-url` 保存最终公网 URL。
 7. 先运行 `api-smoke` 做直接接口测试，再对运行中的入口运行 `verify`。
@@ -291,12 +288,12 @@ Start the local server:
 启动本地服务：
 
 ```bash
-chatgpt-codex serve --ttl-minutes 120
+chatgpt-codex serve
 ```
 
-Without `--ttl-minutes`, the server stays active until the process stops. With `--ttl-minutes`, POST Actions return `403` after expiry even if the process and tunnel are still running.
+By default, access stays active until the server is stopped or `chatgpt-codex access revoke` is run. This is the recommended personal-use mode. If you intentionally want a short-lived session, start with `chatgpt-codex serve --ttl-minutes 120`; with `--ttl-minutes`, POST Actions return `403` after expiry even if the process and tunnel are still running.
 
-不加 `--ttl-minutes` 时，服务会持续有效直到进程停止。加上 `--ttl-minutes` 后，即使进程和隧道还在，过期后 POST Actions 也会返回 `403`。
+默认情况下，访问会一直有效，直到服务停止或运行 `chatgpt-codex access revoke`。这是推荐的个人自用模式。如果你明确想使用短时会话，可以用 `chatgpt-codex serve --ttl-minutes 120` 启动；加上 `--ttl-minutes` 后，即使进程和隧道还在，过期后 POST Actions 也会返回 `403`。
 
 ### Switching Projects In GPT / 在 GPT 里切换项目
 
@@ -472,8 +469,10 @@ Built-in guardrails:
 - 文件列表和搜索会跳过 `.git`、`.venv`、`node_modules`、缓存等实现细节目录。
 - POST actions require `Authorization: Bearer <token>`.
 - 所有 POST Action 都要求 `Authorization: Bearer <token>`。
-- Access sessions can expire automatically with `serve --ttl-minutes` or `access grant --ttl-minutes`.
-- 可以用 `serve --ttl-minutes` 或 `access grant --ttl-minutes` 让访问会话自动过期。
+- The public tunnel URL alone cannot run Actions. Without the bearer token, POST Actions return `401`.
+- 仅知道公网隧道地址不能执行 Actions。没有 bearer token 时，POST Actions 会返回 `401`。
+- Personal-use access does not expire by default. Optional expiry is available with `serve --ttl-minutes` or `access grant --ttl-minutes`.
+- 个人自用模式默认不过期。如需可选过期，可使用 `serve --ttl-minutes` 或 `access grant --ttl-minutes`。
 - `rotate-token` changes the bearer token; a running server reloads the token from config before each Action.
 - `rotate-token` 会更换 bearer token；运行中的服务会在每次 Action 前从配置重新读取 token。
 - `access revoke` immediately expires access and rotates the token without printing the new secret.

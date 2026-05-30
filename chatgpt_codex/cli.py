@@ -359,6 +359,7 @@ def _ai_command_catalog() -> dict:
             "chatgpt-codex open-chatgpt",
         ],
         "runtime": [
+            "chatgpt-codex serve",
             "chatgpt-codex serve --ttl-minutes <minutes>",
             "chatgpt-codex tunnel",
         ],
@@ -371,6 +372,7 @@ def _ai_command_catalog() -> dict:
         "notes": [
             "status and ai-commands are machine-readable JSON",
             "status reports token_configured but never prints the bearer token",
+            "normal personal-use access does not expire unless a TTL is explicitly set",
             "rotate-token is the only management command that prints a new bearer token",
             "access revoke expires the current session and rotates the token without printing it",
             "workspace switching is limited to registered workspace names",

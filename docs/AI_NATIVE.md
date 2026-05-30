@@ -66,8 +66,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 如果用户想手工编辑文件，用 `scripts/prepare-permissions.sh` 或 `scripts/prepare-permissions.ps1` 复制根目录的 `permissions.example.json`。
 - Run `chatgpt-codex doctor`.
 - 运行 `chatgpt-codex doctor`。
-- Start `chatgpt-codex serve --ttl-minutes 120` or explicitly run `chatgpt-codex access grant --ttl-minutes 120`.
-- 启动 `chatgpt-codex serve --ttl-minutes 120`，或显式运行 `chatgpt-codex access grant --ttl-minutes 120`。
+- Start `chatgpt-codex serve`. Do not set a TTL for normal personal use unless the user asks for a short-lived session.
+- 启动 `chatgpt-codex serve`。普通个人自用不要设置 TTL，除非用户明确要求短时会话。
 - Use a temporary HTTPS tunnel when no Cloudflare login/domain are provided; use `chatgpt-codex.<domain>` when both are provided.
 - 没有 Cloudflare 登录/域名时使用临时 HTTPS 隧道；两者都提供时使用 `chatgpt-codex.<domain>`。
 - Open ChatGPT Builder with `chatgpt-codex open-chatgpt` only after browser automation is approved and the user has logged in manually.
