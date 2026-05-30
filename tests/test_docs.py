@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import re
 import unittest
 
 
@@ -12,6 +13,7 @@ class DocumentationTests(unittest.TestCase):
             root / "CLAUDE.md",
             root / "docs" / "AI_NATIVE.md",
             root / "docs" / "SECURITY.md",
+            root / "README.zh-CN.md",
             root / "skills" / "chatgpt-codex" / "SKILL.md",
             root / "skills" / "chatgpt-codex" / "references" / "agent-handoff.md",
             root / "docs" / "superpowers" / "plans" / "2026-05-29-chatgpt-codex.md",
@@ -33,6 +35,19 @@ class DocumentationTests(unittest.TestCase):
             for term in forbidden:
                 with self.subTest(path=path.name, term=term):
                     self.assertNotIn(term, content)
+
+    def test_readmes_are_language_split_and_clickable(self):
+        root = Path(__file__).resolve().parents[1]
+        english = (root / "README.md").read_text(encoding="utf-8")
+        chinese_path = root / "README.zh-CN.md"
+        chinese = chinese_path.read_text(encoding="utf-8")
+
+        self.assertIn("[Chinese](README.zh-CN.md)", english)
+        self.assertIn("[English](README.md)", chinese)
+        self.assertNotRegex(english, re.compile(r"[\u4e00-\u9fff]"))
+        self.assertRegex(chinese, re.compile(r"[\u4e00-\u9fff]"))
+        self.assertIn("ChatGPT local coding bridge", english)
+        self.assertIn("ChatGPT 本地编程桥", chinese)
 
     def test_skill_has_complete_metadata_and_no_template_todos(self):
         root = Path(__file__).resolve().parents[1]

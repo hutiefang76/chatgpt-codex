@@ -194,6 +194,18 @@ class CliTests(unittest.TestCase):
             self.assertEqual(status["openapi_url"], "https://actions.example.com/openapi.json")
             self.assertNotIn(token, stdout.getvalue())
 
+    def test_cli_language_can_be_selected_for_machine_readable_status(self):
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            exit_code = main(["--lang", "zh", "status"])
+
+        status = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(status["language"], "zh")
+        self.assertIn("chatgpt-codex --lang en status", status["language_examples"])
+        self.assertIn("chatgpt-codex --lang zh status", status["language_examples"])
+
     def test_ai_commands_prints_machine_readable_command_catalog(self):
         stdout = io.StringIO()
 
@@ -204,6 +216,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("setup", catalog)
         self.assertIn("workspace", catalog)
+        self.assertIn("language", catalog)
+        self.assertIn("chatgpt-codex --lang zh <command>", catalog["language"])
         self.assertIn("chatgpt-codex status", catalog["inspect"])
         self.assertIn("chatgpt-codex access status", catalog["inspect"])
         self.assertIn("chatgpt-codex set-public-url <url>", catalog["routing"])

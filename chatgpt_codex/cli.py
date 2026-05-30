@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -33,6 +34,7 @@ def main(argv=None) -> int:
         description="Local coding bridge for ChatGPT Custom GPT Actions. / ChatGPT Custom GPT Actions 的本地编程桥。",
     )
     parser.add_argument("--config", default=None, help="Path to config.json. / config.json 路径。Defaults to .chatgpt-codex/config.json.")
+    parser.add_argument("--lang", choices=["auto", "en", "zh"], default="auto", help="CLI language: auto, en, or zh. / 命令行语言：auto、en 或 zh。")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subcommands.add_parser("init", help="Create a local config file. / 创建本地配置文件。")
@@ -128,6 +130,7 @@ def main(argv=None) -> int:
     authorize_parser.add_argument("--force", action="store_true")
 
     args = parser.parse_args(argv)
+    language = _resolve_language(args.lang)
     cfg_path = Path(args.config).expanduser() if args.config else config_path(Path.cwd())
 
     if args.command == "init":
@@ -151,7 +154,7 @@ def main(argv=None) -> int:
         print(_agent_brief())
         return 0
     if args.command == "status":
-        print(json.dumps(_management_status(cfg_path), indent=2, ensure_ascii=False))
+        print(json.dumps(_management_status(cfg_path, language), indent=2, ensure_ascii=False))
         return 0
     if args.command == "ai-commands":
         print(json.dumps(_ai_command_catalog(), indent=2, ensure_ascii=False))
@@ -307,9 +310,31 @@ def _doctor(config: AppConfig) -> int:
     return 0 if ok else 1
 
 
-def _management_status(cfg_path: Path) -> dict:
+def _resolve_language(value: str = "auto") -> str:
+    requested = (value or "auto").lower()
+    if requested in {"en", "zh"}:
+        return requested
+    env_value = os.environ.get("CHATGPT_CODEX_LANG", "").lower()
+    if env_value in {"en", "zh"}:
+        return env_value
+    locale_value = (os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or "").lower()
+    return "zh" if locale_value.startswith("zh") else "en"
+
+
+def _language_examples() -> list:
+    return [
+        "chatgpt-codex --lang en status",
+        "chatgpt-codex --lang zh status",
+        "CHATGPT_CODEX_LANG=en chatgpt-codex status",
+        "CHATGPT_CODEX_LANG=zh chatgpt-codex status",
+    ]
+
+
+def _management_status(cfg_path: Path, language: str = "en") -> dict:
     permissions_file = permissions_path(Path.cwd())
     result = {
+        "language": language,
+        "language_examples": _language_examples(),
         "config_path": str(cfg_path),
         "config_exists": cfg_path.exists(),
         "permissions_path": str(permissions_file),
@@ -353,6 +378,12 @@ def _management_status(cfg_path: Path) -> dict:
 
 def _ai_command_catalog() -> dict:
     return {
+        "language": [
+            "chatgpt-codex --lang en <command>",
+            "chatgpt-codex --lang zh <command>",
+            "CHATGPT_CODEX_LANG=en chatgpt-codex <command>",
+            "CHATGPT_CODEX_LANG=zh chatgpt-codex <command>",
+        ],
         "setup": [
             "chatgpt-codex channel register --workspace <path> --public-base-url <url>",
             "chatgpt-codex init --workspace <path> --workspace-name <name> --public-base-url <url>",
