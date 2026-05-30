@@ -12,6 +12,12 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
+from .builder import (
+    builder_route_map_path,
+    builder_state_path,
+    make_builder_payload,
+    playwright_profile_dir,
+)
 from .config import (
     ACCESS_PLANS,
     AppConfig,
@@ -72,6 +78,25 @@ def main(argv=None) -> int:
     subcommands.add_parser("ai-native", help="Alias of agent-brief. / agent-brief 的别名。")
     subcommands.add_parser("skills", help="Print the bundled skill handoff. / 打印内置 skill 交接说明。")
     subcommands.add_parser("skill", help="Alias of skills. / skills 的别名。")
+
+    builder_parser = subcommands.add_parser("builder", help="Automate ChatGPT Builder with Playwright. / 使用 Playwright 自动化 ChatGPT Builder。")
+    builder_subcommands = builder_parser.add_subparsers(dest="builder_command", required=True)
+    builder_payload = builder_subcommands.add_parser("payload", help="Print Builder fields without leaking token. / 打印 Builder 字段但不泄露 token。")
+    builder_payload.add_argument("--json", action="store_true", help="Print JSON output. / 输出 JSON。")
+    builder_subcommands.add_parser("profile-path", help="Print the persistent Playwright profile path. / 打印持久化 Playwright profile 路径。")
+    builder_open_login = builder_subcommands.add_parser("open-login", help="Open ChatGPT login in Playwright. / 用 Playwright 打开 ChatGPT 登录。")
+    builder_open_login.add_argument("--dry-run", action="store_true")
+    builder_doctor = builder_subcommands.add_parser("doctor", help="Check ChatGPT Builder readiness through Playwright. / 通过 Playwright 检查 Builder 就绪状态。")
+    builder_doctor.add_argument("--dry-run", action="store_true")
+    builder_sniff = builder_subcommands.add_parser("sniff", help="Sniff Builder internal API routes in the current Playwright session. / 在当前 Playwright 会话中嗅探 Builder 内部接口。")
+    builder_sniff.add_argument("--dry-run", action="store_true")
+    builder_sniff.add_argument("--output", default="", help="Route map output path. / route map 输出路径。")
+    builder_configure = builder_subcommands.add_parser("configure", help="Configure the GPT Builder using UI, hybrid, or API mode. / 使用 UI、hybrid 或 API 模式配置 GPT Builder。")
+    builder_configure.add_argument("--mode", choices=["ui", "hybrid", "api"], default="ui")
+    builder_configure.add_argument("--visibility", choices=["private", "link", "store"], default="private")
+    builder_configure.add_argument("--dry-run", action="store_true")
+    builder_smoke = builder_subcommands.add_parser("smoke", help="Run a real GPT Action smoke test through ChatGPT. / 通过 ChatGPT 运行真实 GPT Action 冒烟测试。")
+    builder_smoke.add_argument("--dry-run", action="store_true")
 
     serve_parser = subcommands.add_parser("serve", help="Start the local HTTP action server. / 启动本地 HTTP Action 服务。")
     serve_parser.add_argument("--host", default=None)
@@ -154,6 +179,9 @@ def main(argv=None) -> int:
 
     if args.command in {"agent-brief", "ai-native", "skills", "skill"}:
         print(_agent_brief())
+        return 0
+    if args.command == "builder" and args.builder_command == "profile-path":
+        print(playwright_profile_dir())
         return 0
     if args.command == "status":
         print(json.dumps(_management_status(cfg_path, language), indent=2, ensure_ascii=False))
@@ -239,6 +267,8 @@ def main(argv=None) -> int:
 
     config = load_config(cfg_path)
 
+    if args.command == "builder":
+        return _builder_command(args, config, cfg_path)
     if args.command == "doctor":
         return _doctor(config)
     if args.command == "token":
@@ -365,6 +395,9 @@ def _management_status(cfg_path: Path, language: str = "en") -> dict:
         "permissions_exists": permissions_file.exists(),
         "os": _platform_label(),
         "cloudflared_found": bool(shutil.which("cloudflared")),
+        "node_found": bool(shutil.which("node")),
+        "npx_found": bool(shutil.which("npx")),
+        "builder_profile_path": str(playwright_profile_dir()),
         "configured": False,
     }
     if cfg_path.exists():
@@ -438,6 +471,14 @@ def _ai_command_catalog() -> dict:
         ],
         "chatgpt_builder": [
             "chatgpt-codex chatgpt-preflight",
+            "chatgpt-codex builder payload --json",
+            "chatgpt-codex builder open-login",
+            "chatgpt-codex builder doctor",
+            "chatgpt-codex builder sniff",
+            "chatgpt-codex builder configure --mode ui",
+            "chatgpt-codex builder configure --mode hybrid",
+            "chatgpt-codex builder configure --mode api",
+            "chatgpt-codex builder smoke",
             "chatgpt-codex open-chatgpt-login",
             "chatgpt-codex gpt-instructions",
             "chatgpt-codex openapi",
@@ -610,6 +651,68 @@ def _workspace_command(args, config: AppConfig, cfg_path: Path) -> int:
         print(json.dumps(status, indent=2, ensure_ascii=False))
         return 0
     return 2
+
+
+def _builder_command(args, config: AppConfig, cfg_path: Path) -> int:
+    if args.builder_command == "payload":
+        payload = make_builder_payload(config)
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            _print_builder_payload_text(payload)
+        return 0
+    if args.builder_command in {"open-login", "doctor", "sniff", "configure", "smoke"}:
+        command_payload = _builder_playwright_payload(args, cfg_path)
+        if getattr(args, "dry_run", False):
+            print(json.dumps(command_payload, indent=2, ensure_ascii=False))
+            return 0
+        return subprocess.call(command_payload["command"])
+    return 2
+
+
+def _print_builder_payload_text(payload: dict) -> None:
+    print(f"Name: {payload['gpt']['name']}")
+    print(f"Description: {payload['gpt']['description']}")
+    print("Instructions:")
+    print(payload["gpt"]["instructions"])
+    print(f"Schema URL: {payload['action']['schema_import_url']}")
+    print(f"Privacy URL: {payload['action']['privacy_policy_url']}")
+    print("Authentication: API key / Bearer")
+    print("Token: use `chatgpt-codex token`; not printed here")
+    print(f"Visibility: {payload['visibility']}")
+
+
+def _builder_playwright_payload(args, cfg_path: Path) -> dict:
+    root = Path.cwd()
+    route_map = Path(getattr(args, "output", "") or builder_route_map_path(root)).expanduser()
+    state_path = builder_state_path(root)
+    command = [
+        "npx",
+        "--yes",
+        "--package",
+        "playwright",
+        "node",
+        str(root / "scripts" / "chatgpt_builder_playwright.mjs"),
+        args.builder_command,
+        "--config",
+        str(cfg_path),
+        "--profile",
+        str(playwright_profile_dir()),
+        "--state",
+        str(state_path),
+        "--routes",
+        str(route_map),
+    ]
+    if args.builder_command == "configure":
+        command.extend(["--mode", args.mode, "--visibility", args.visibility])
+    return {
+        "command": command,
+        "profile_path": str(playwright_profile_dir()),
+        "state_path": str(state_path),
+        "route_map_path": str(route_map),
+        "uses_playwright_persistent_profile": True,
+        "token_printed": False,
+    }
 
 
 def _verify_actions(config: AppConfig, base_url: str, timeout: int) -> dict:
@@ -903,7 +1006,7 @@ def _chatgpt_preflight(cfg_path: Path, language: str = "en") -> dict:
         "chatgpt_login": {
             "required": True,
             "login_url": "https://chatgpt.com/",
-            "open_command": "chatgpt-codex open-chatgpt-login",
+            "open_command": "chatgpt-codex builder open-login",
             "agent_rule": "Open the login page and wait for the human to finish. Do not ask for passwords, cookies, sessions, or API keys.",
         },
         "account_requirements": {
@@ -913,10 +1016,13 @@ def _chatgpt_preflight(cfg_path: Path, language: str = "en") -> dict:
         },
         "builder_automation": {
             "editor_url": "https://chatgpt.com/gpts/editor",
-            "open_command": "chatgpt-codex open-chatgpt",
+            "open_command": "chatgpt-codex builder doctor",
             "fully_configurable_by_local_api": False,
-            "why": "ChatGPT Builder is a web-only editor and does not provide a local project API for creating or saving GPT Actions.",
-            "agent_rule": "After human login, inspect the Builder page. Continue only if the editor loads and the Actions section is available.",
+            "why": "ChatGPT Builder is a web-only editor without a public stable local API. Use Playwright first; internal API replay is allowed only after same-session sniffing and validation.",
+            "agent_rule": "After human login in the Playwright persistent profile, inspect the Builder page. Continue only if the editor loads and the Actions section is available.",
+            "primary_path": "chatgpt-codex builder configure --mode ui",
+            "internal_api_discovery": "chatgpt-codex builder sniff",
+            "fallback": "Computer Use only when Playwright cannot operate the page.",
         },
         "local_requirements": {
             "public_https_required_for_chatgpt_web": True,
@@ -1033,19 +1139,19 @@ Agent mission / Agent 任务：
    为目标 workspace 注册通道。
 5. Start the local server. If ChatGPT web should call it, set up or use a public HTTPS route.
    启动本地服务。如果 ChatGPT 网页端需要调用它，请配置或使用公网 HTTPS 入口。
-6. Open ChatGPT Builder in Chrome only after browser automation is approved and the user has logged in manually.
-   只有在用户授权浏览器自动化并手动登录后，才在 Chrome 中打开 ChatGPT Builder。
+6. Open ChatGPT Builder with Playwright after browser automation is approved and the user has logged in manually.
+   用户授权浏览器自动化并手动登录后，用 Playwright 打开 ChatGPT Builder。
 7. Verify /health, /openapi.json, and at least one authenticated read-only action.
    验证 /health、/openapi.json，以及至少一个带鉴权的只读 Action。
 8. Print or apply the ChatGPT Builder fields.
    打印或填写 ChatGPT Builder 字段。
 
 Required user inputs / 需要用户提供：
-- Chrome human login to ChatGPT: required / Chrome 真人登录 ChatGPT：必须
+- Playwright-profile human login to ChatGPT: required / Playwright profile 真人登录 ChatGPT：必须
 - workspace path: required / workspace 路径：必须
-- Chrome human login to Cloudflare: optional / Chrome 真人登录 Cloudflare：可选
+- Browser human login to Cloudflare: optional / 浏览器真人登录 Cloudflare：可选
 - Cloudflare-managed domain: optional / Cloudflare 管理的域名：可选
-- local authorization for OS detection, route selection, helper install, service start, Chrome opening, Builder configuration after human login, workspace writes, and workspace command execution / 本地授权：允许自动识别系统、选择入口方案、安装辅助工具、启动服务、打开 Chrome、在真人登录后配置 Builder、写入 workspace、并在 workspace 内执行命令
+- local authorization for OS detection, route selection, helper install, service start, Playwright opening, Builder configuration after human login, workspace writes, and workspace command execution / 本地授权：允许自动识别系统、选择入口方案、安装辅助工具、启动服务、打开 Playwright、在真人登录后配置 Builder、写入 workspace、并在 workspace 内执行命令
 
 Defaults / 默认：
 - Detect macOS or Windows automatically and use port 8766 unless the user overrides it.
@@ -1114,7 +1220,10 @@ chatgpt-codex tunnel
 
 If browser automation is approved and the user has logged into ChatGPT manually / 如果用户已授权浏览器自动化并手动登录 ChatGPT：
 ```bash
-chatgpt-codex open-chatgpt
+chatgpt-codex builder open-login
+chatgpt-codex builder doctor
+chatgpt-codex builder configure --mode ui
+chatgpt-codex builder smoke
 ```
 
 After verification, print / 验证后打印：

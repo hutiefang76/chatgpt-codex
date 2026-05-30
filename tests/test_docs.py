@@ -83,12 +83,12 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("Windows PowerShell", readme)
         self.assertIn(".\\.venv\\Scripts\\Activate.ps1", readme)
         self.assertIn("py -3 -m unittest discover -s tests", readme)
-        self.assertIn("Chrome human login to ChatGPT", skill)
+        self.assertIn("Human login to ChatGPT in the Playwright persistent profile", skill)
         self.assertIn("chatgpt-codex.<domain>", skill)
         self.assertIn("Do not ask the user to choose an operating system", skill)
         self.assertIn("chatgpt-codex authorize", readme)
         self.assertIn(".chatgpt-codex/permissions.json", readme)
-        self.assertIn("chatgpt-codex open-chatgpt", readme)
+        self.assertIn("chatgpt-codex builder open-login", readme)
         self.assertIn("chatgpt-codex workspace add", readme)
         self.assertIn("switch_workspace", readme)
         self.assertIn("chatgpt-codex channel register", readme)
@@ -117,12 +117,35 @@ class DocumentationTests(unittest.TestCase):
         for path in files:
             content = path.read_text(encoding="utf-8")
             with self.subTest(path=path.name):
-                self.assertIn("Chrome", content)
+                self.assertIn("Playwright", content)
                 self.assertIn("ChatGPT", content)
                 self.assertIn("workspace", content)
                 self.assertIn("Cloudflare", content)
                 self.assertIn("chatgpt-codex.<domain>", content)
                 self.assertIn("temporary HTTPS tunnel", content)
+
+    def test_docs_define_playwright_as_primary_builder_path(self):
+        root = Path(__file__).resolve().parents[1]
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        chinese = (root / "README.zh-CN.md").read_text(encoding="utf-8")
+        skill = (root / "skills" / "chatgpt-codex" / "SKILL.md").read_text(encoding="utf-8")
+
+        for content in [readme, skill]:
+            with self.subTest(language="en"):
+                self.assertIn("Playwright", content)
+                self.assertIn("persistent profile", content)
+                self.assertIn("builder sniff", content)
+                self.assertIn("same Playwright browser context", content)
+                self.assertIn("Computer Use", content)
+                self.assertIn("fallback", content)
+                self.assertIn("not a default dependency", content)
+
+        self.assertIn("Playwright", chinese)
+        self.assertIn("持久化 profile", chinese)
+        self.assertIn("builder sniff", chinese)
+        self.assertIn("同一个 Playwright 浏览器会话", chinese)
+        self.assertIn("Computer Use", chinese)
+        self.assertIn("兜底", chinese)
 
     def test_root_permissions_template_and_helpers_exist(self):
         root = Path(__file__).resolve().parents[1]

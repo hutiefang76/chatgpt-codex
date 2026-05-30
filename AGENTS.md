@@ -33,19 +33,19 @@ Ask only for the minimal human inputs before making changes:
 
 执行前只询问真人必须提供的最小信息：
 
-1. Chrome human login to ChatGPT: required. The user logs in manually; never ask for credentials.
+1. Human login to ChatGPT in the Playwright persistent profile: required. The user logs in manually; never ask for credentials.
 2. Workspace path to expose: required.
-3. Chrome human login to Cloudflare: optional, only for stable Cloudflare-hosted routing.
+3. Browser human login to Cloudflare: optional, only for stable Cloudflare-hosted routing.
 4. Cloudflare-managed domain: optional. If present, the fixed hostname is `chatgpt-codex.<domain>`.
-5. Local authorization: required. Confirm permission to detect the OS, choose the route, install needed helpers, start local services, open Chrome, configure Builder after human login, write the workspace, and execute commands inside the workspace.
+5. Local authorization: required. Confirm permission to detect the OS, choose the route, install needed helpers, start local services, open the Playwright browser, configure Builder after human login, write the workspace, and execute commands inside the workspace.
 
 中文：
 
-1. Chrome 真人登录 ChatGPT：必须。用户手动登录；不要索要凭据。
+1. 在 Playwright 持久化 profile 中真人登录 ChatGPT：必须。用户手动登录；不要索要凭据。
 2. 要暴露的 workspace 路径：必须。
-3. Chrome 真人登录 Cloudflare：可选，仅用于稳定的 Cloudflare 托管入口。
+3. 浏览器真人登录 Cloudflare：可选，仅用于稳定的 Cloudflare 托管入口。
 4. Cloudflare 管理的域名：可选。如果提供，固定 hostname 为 `chatgpt-codex.<domain>`。
-5. 本地授权：必须。确认允许自动识别系统、选择入口方案、安装必要辅助工具、启动本地服务、打开 Chrome、在真人登录后配置 Builder、写入 workspace，并在 workspace 内执行命令。
+5. 本地授权：必须。确认允许自动识别系统、选择入口方案、安装必要辅助工具、启动本地服务、打开 Playwright 浏览器、在真人登录后配置 Builder、写入 workspace，并在 workspace 内执行命令。
 
 Do not ask the user to choose the OS, access plan, local port, or subdomain unless they explicitly want to override defaults. Detect the OS, use port `8766`, pick a temporary HTTPS tunnel when no Cloudflare login/domain are available, and pick `https://chatgpt-codex.<domain>` when they are available.
 
@@ -123,17 +123,20 @@ If the user chose the built-in quick tunnel, start:
 chatgpt-codex tunnel
 ```
 
-If browser automation is approved, open ChatGPT Builder after the user has logged in manually:
+If browser automation is approved, use Playwright after the user has logged in manually:
 
 如果用户授权浏览器自动化，请在用户手动登录后打开 ChatGPT Builder：
 
 ```bash
-chatgpt-codex open-chatgpt
+chatgpt-codex builder open-login
+chatgpt-codex builder doctor
+chatgpt-codex builder configure --mode ui
+chatgpt-codex builder smoke
 ```
 
-Use Chrome automation to create or edit the GPT. Never ask for or store ChatGPT passwords, cookies, browser session data, or API keys.
+Use `chatgpt-codex builder sniff` to discover internal Builder API routes only inside the same Playwright browser context. Use Computer Use only as a fallback. Never ask for or store ChatGPT passwords, cookies, browser session data, or API keys.
 
-使用 Chrome 自动化创建或编辑 GPT。不要索要或保存 ChatGPT 密码、cookie、浏览器会话数据或 API key。
+使用 `chatgpt-codex builder sniff` 只在同一个 Playwright 浏览器会话中发现内部 Builder API 路由。Computer Use 仅作为兜底。不要索要或保存 ChatGPT 密码、cookie、浏览器会话数据或 API key。
 
 ## Verify / 验证
 

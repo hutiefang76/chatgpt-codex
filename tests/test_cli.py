@@ -192,6 +192,9 @@ class CliTests(unittest.TestCase):
             self.assertTrue(status["access"]["active"])
             self.assertEqual(status["active_workspace"], "demo")
             self.assertEqual(status["openapi_url"], "https://actions.example.com/openapi.json")
+            self.assertIn("builder_profile_path", status)
+            self.assertIn("node_found", status)
+            self.assertIn("npx_found", status)
             self.assertNotIn(token, stdout.getvalue())
 
     def test_cli_language_can_be_selected_for_machine_readable_status(self):
@@ -469,7 +472,7 @@ class CliTests(unittest.TestCase):
                 self.assertIn("Codex or Claude", output)
                 self.assertIn("skills/chatgpt-codex/SKILL.md", output)
                 self.assertIn("workspace path", output)
-                self.assertIn("Chrome human login to ChatGPT", output)
+                self.assertIn("Playwright-profile human login to ChatGPT", output)
                 self.assertIn("chatgpt-codex.<domain>", output)
                 self.assertIn("public HTTPS", output)
                 self.assertIn("ChatGPT Builder", output)

@@ -16,11 +16,11 @@ The primary agent entry is the bundled skill:
 Please use the chatgpt-codex skill in this repository to set up my ChatGPT local coding bridge.
 
 Ask me only for the minimal human inputs:
-- confirm I am logged into ChatGPT in Chrome
+- confirm I am logged into ChatGPT in the Playwright persistent profile
 - workspace path
-- optional: confirm I am logged into Cloudflare in Chrome
+- optional: confirm I am logged into Cloudflare in a browser
 - optional: Cloudflare-managed domain
-- local authorization for you to detect the OS, choose the route, install needed helpers, start services, open Chrome, configure Builder after human login, write the workspace, and execute commands inside the workspace
+- local authorization for you to detect the OS, choose the route, install needed helpers, start services, open the Playwright browser, configure Builder after human login, write the workspace, and execute commands inside the workspace
 
 Use a temporary HTTPS tunnel when I do not provide Cloudflare login plus a domain. Use the fixed hostname chatgpt-codex.<domain> when both are available.
 
@@ -33,11 +33,11 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 请使用本仓库里的 chatgpt-codex skill，把这个仓库配置成我的 ChatGPT 本地编程桥。
 
 只问我真人必须提供的最小信息：
-- 确认我已在 Chrome 登录 ChatGPT
+- 确认我已在 Playwright 持久化 profile 中登录 ChatGPT
 - workspace 路径
-- 可选：确认我已在 Chrome 登录 Cloudflare
+- 可选：确认我已在浏览器登录 Cloudflare
 - 可选：Cloudflare 管理的域名
-- 本地授权：允许你自动识别系统、选择入口方案、安装必要辅助工具、启动服务、打开 Chrome、在真人登录后配置 Builder、写入 workspace，并在 workspace 内执行命令
+- 本地授权：允许你自动识别系统、选择入口方案、安装必要辅助工具、启动服务、打开 Playwright 浏览器、在真人登录后配置 Builder、写入 workspace，并在 workspace 内执行命令
 
 如果我没有同时提供 Cloudflare 登录和域名，使用临时 HTTPS 隧道。如果两者都具备，使用固定域名 chatgpt-codex.<domain>。
 
@@ -72,10 +72,10 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 启动 `chatgpt-codex serve`。普通个人自用不要设置 TTL，除非用户明确要求短时会话。
 - Use a temporary HTTPS tunnel when no Cloudflare login/domain are provided; use `chatgpt-codex.<domain>` when both are provided.
 - 没有 Cloudflare 登录/域名时使用临时 HTTPS 隧道；两者都提供时使用 `chatgpt-codex.<domain>`。
-- Open ChatGPT Builder with `chatgpt-codex open-chatgpt` only after browser automation is approved and the user has logged in manually.
-- 只有在用户授权浏览器自动化并手动登录后，才用 `chatgpt-codex open-chatgpt` 打开 ChatGPT Builder。
-- If the user is not logged in, run `chatgpt-codex open-chatgpt-login`, wait for the human to finish login, then inspect `https://chatgpt.com/gpts/editor`. Stop if the editor or Actions section is unavailable.
-- 如果用户未登录，运行 `chatgpt-codex open-chatgpt-login`，等待真人完成登录，再检查 `https://chatgpt.com/gpts/editor`。如果编辑器或 Actions 区域不可用，停止。
+- Open ChatGPT Builder with `chatgpt-codex builder open-login` and `chatgpt-codex builder doctor` after browser automation is approved.
+- 用户授权浏览器自动化后，用 `chatgpt-codex builder open-login` 和 `chatgpt-codex builder doctor` 打开并检查 ChatGPT Builder。
+- If internal API acceleration is needed, run `chatgpt-codex builder sniff`, replay only in the same Playwright browser context, then refresh and verify. Stop if the editor or Actions section is unavailable.
+- 如果需要内部 API 加速，运行 `chatgpt-codex builder sniff`；replay 只能在同一个 Playwright 浏览器会话中进行，然后刷新并验证。如果编辑器或 Actions 区域不可用，停止。
 - Ensure GPT instructions mention `workspace_status`, `list_workspaces`, and `switch_workspace` for showing and switching the current local directory.
 - 确保 GPT Instructions 写明用 `workspace_status`、`list_workspaces` 和 `switch_workspace` 显示并切换当前本地目录。
 - Run `chatgpt-codex api-smoke` before browser work to test the Action interfaces directly in temporary workspaces.

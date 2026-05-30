@@ -6,11 +6,11 @@
 Please use the chatgpt-codex skill in this repository to set up my ChatGPT local coding bridge.
 
 Ask me only for the minimal human inputs:
-- confirm I am logged into ChatGPT in Chrome
+- confirm I am logged into ChatGPT in the Playwright persistent profile
 - workspace path
-- optional: confirm I am logged into Cloudflare in Chrome
+- optional: confirm I am logged into Cloudflare in a browser
 - optional: Cloudflare-managed domain
-- local authorization for you to detect the OS, choose the route, install needed helpers, start services, open Chrome, configure Builder after human login, write the workspace, and execute commands inside the workspace
+- local authorization for you to detect the OS, choose the route, install needed helpers, start services, open the Playwright browser, configure Builder after human login, write the workspace, and execute commands inside the workspace
 
 Use a temporary HTTPS tunnel when I do not provide Cloudflare login plus a domain. Use the fixed hostname chatgpt-codex.<domain> when both are available.
 
@@ -23,11 +23,11 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 请使用本仓库里的 chatgpt-codex skill，把这个仓库配置成我的 ChatGPT 本地编程桥。
 
 只问我真人必须提供的最小信息：
-- 确认我已在 Chrome 登录 ChatGPT
+- 确认我已在 Playwright 持久化 profile 中登录 ChatGPT
 - workspace 路径
-- 可选：确认我已在 Chrome 登录 Cloudflare
+- 可选：确认我已在浏览器登录 Cloudflare
 - 可选：Cloudflare 管理的域名
-- 本地授权：允许你自动识别系统、选择入口方案、安装必要辅助工具、启动服务、打开 Chrome、在真人登录后配置 Builder、写入 workspace，并在 workspace 内执行命令
+- 本地授权：允许你自动识别系统、选择入口方案、安装必要辅助工具、启动服务、打开 Playwright 浏览器、在真人登录后配置 Builder、写入 workspace，并在 workspace 内执行命令
 
 如果我没有同时提供 Cloudflare 登录和域名，使用临时 HTTPS 隧道。如果两者都具备，使用固定域名 chatgpt-codex.<domain>。
 

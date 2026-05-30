@@ -19,6 +19,7 @@ The local server runs with only the Python standard library. ChatGPT web cannot 
 
 - Supported OS: macOS and Windows.
 - Python 3.9 or newer.
+- Node.js/npm with `npx` for Playwright Builder automation. The local server itself does not require Node.
 - A ChatGPT account or plan that can create Custom GPTs with Actions. Do not assume Free tier can create or edit GPTs; run `chatgpt-codex chatgpt-preflight` and check the Builder page after login.
 - Local OS permission to read and write the workspace you configure.
 - Optional: `cloudflared`, only for the built-in `chatgpt-codex tunnel` command.
@@ -26,11 +27,11 @@ The local server runs with only the Python standard library. ChatGPT web cannot 
 
 ## Minimal Human Inputs
 
-- Chrome human login to ChatGPT is required. The agent must not ask for ChatGPT passwords, cookies, sessions, or API keys.
+- Human login to ChatGPT in the Playwright persistent profile is required. The agent must not ask for ChatGPT passwords, cookies, sessions, or API keys.
 - Workspace path is required, for example `/Users/me/project/demo`.
-- Chrome human login to Cloudflare is optional, only for a stable Cloudflare-managed custom hostname.
+- Browser human login to Cloudflare is optional, only for a stable Cloudflare-managed custom hostname.
 - A Cloudflare-managed domain is optional. If provided, the fixed hostname is `chatgpt-codex.<domain>`.
-- One local authorization is required: allow the agent to detect the OS, choose the route, install needed helpers, start the service, open Chrome, configure Builder after human login, write the workspace, and execute commands inside the workspace.
+- One local authorization is required: allow the agent to detect the OS, choose the route, install needed helpers, start the service, open the Playwright browser, configure Builder after human login, write the workspace, and execute commands inside the workspace.
 
 Defaults: if no Cloudflare login and domain are provided, the agent uses a temporary HTTPS tunnel for ChatGPT web. If both are available, the agent may configure the stable hostname `chatgpt-codex.<domain>`. Local-only mode is for tests or explicit user requests.
 
@@ -139,6 +140,31 @@ chatgpt-codex verify
 
 `api-smoke` starts a temporary local server and tests the Action interfaces directly: auth, health, schema, workspace status, workspace listing, file list/read/write/search/patch, command execution, workspace switching, and safety blocks. It does not touch your real workspace.
 
+## Builder Automation
+
+The default Builder path is Playwright with a dedicated persistent profile. It does not reuse the user's daily Chrome profile, and the Chrome plugin is not a default dependency. The user logs in once inside the Playwright browser, then the saved GPT belongs to the user's ChatGPT account and is visible from normal browsers too.
+
+Useful commands:
+
+```bash
+chatgpt-codex builder profile-path
+chatgpt-codex builder payload --json
+chatgpt-codex builder open-login
+chatgpt-codex builder doctor
+chatgpt-codex builder configure --mode ui
+chatgpt-codex builder configure --mode hybrid
+chatgpt-codex builder sniff
+chatgpt-codex builder smoke
+```
+
+`builder payload --json` produces the GPT name, description, instructions, schema URL, privacy URL, visibility, and automation metadata without printing the bearer token.
+
+`builder open-login` opens ChatGPT in the Playwright persistent profile. After the user logs in manually, `builder doctor` checks whether the Builder page loads and whether Actions appear available.
+
+`builder configure --mode ui` uses Playwright UI automation. `builder configure --mode hybrid` also captures redacted Builder network traffic while using the UI. `builder sniff` is the explicit internal API discovery flow: perform one Builder save/configure action in the opened browser, press `Ctrl-C`, and the redacted route map is saved to `.chatgpt-codex/builder-routes.json`.
+
+Internal API replay must stay inside the same Playwright browser context. Do not export cookies, sessions, or ChatGPT credentials. Treat internal routes as unstable acceleration data; if they do not validate, fall back to UI automation. Computer Use is the visual fallback for controls, dialogs, or page changes that Playwright cannot operate.
+
 ## Channel Lifecycle
 
 First registration binds this local tool install to the exact workspace path you pass:
@@ -168,15 +194,15 @@ Low-level commands are still available for advanced use: `chatgpt-codex rotate-t
 ## Closed-loop product flow
 
 1. Collect minimal human inputs and local authorization.
-2. Run `chatgpt-preflight`; if needed, open `open-chatgpt-login` and wait for the human to finish login.
-3. Open `open-chatgpt` or the Builder page and confirm the account can create or edit a GPT with Actions.
+2. Run `chatgpt-preflight`; if needed, open `builder open-login` and wait for the human to finish login in the Playwright persistent profile.
+3. Run `builder doctor` and confirm the account can create or edit a GPT with Actions.
 4. Install and run `channel register` to create `.chatgpt-codex/config.json`.
 5. Register authorized workspaces and select `active_workspace`.
 6. Start the local server.
 7. Start or provide a public HTTPS route.
 8. Save the final public URL with `channel renew --public-base-url <url>` or `set-public-url`.
 9. Run `api-smoke` for direct interface testing, then `verify` against the running route.
-10. Configure ChatGPT Builder with `gpt-instructions`, `openapi.json`, and `token`.
+10. Configure ChatGPT Builder with `builder configure --mode ui`, or use `builder sniff` plus `builder configure --mode api` after route validation.
 11. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
 
 ## Manual Setup
@@ -263,15 +289,27 @@ The GPT should call `workspace_status`, `list_workspaces`, and `switch_workspace
 
 ## ChatGPT Builder Setup
 
-If browser automation is approved in `.chatgpt-codex/permissions.json`, Codex can open ChatGPT Builder after the user logs in manually:
+If browser automation is approved in `.chatgpt-codex/permissions.json`, Codex should use Playwright first after the user logs in manually:
 
 ```bash
 chatgpt-codex chatgpt-preflight
-chatgpt-codex open-chatgpt-login
-chatgpt-codex open-chatgpt
+chatgpt-codex builder open-login
+chatgpt-codex builder doctor
+chatgpt-codex builder payload --json
+chatgpt-codex builder configure --mode ui
+chatgpt-codex builder smoke
 ```
 
-The login step should be an explicit handoff: open the page for the user, wait for them to finish, then inspect the Builder page. The local CLI cannot prove account eligibility by itself; the reliable check is whether `https://chatgpt.com/gpts/editor` loads and exposes the Configure and Actions controls. ChatGPT Builder configuration is web-only, so the local code generates and verifies the fields while a human or browser automation fills the web editor.
+The login step should be an explicit handoff: open the Playwright browser for the user, wait for them to finish, then inspect the Builder page. The local CLI cannot prove account eligibility by itself; the reliable check is whether `https://chatgpt.com/gpts/editor` loads and exposes the Configure and Actions controls. ChatGPT Builder configuration is web-only, so the local code generates and verifies the fields while Playwright fills the web editor.
+
+For internal API discovery, run:
+
+```bash
+chatgpt-codex builder sniff
+chatgpt-codex builder configure --mode api
+```
+
+This keeps replay inside the same Playwright browser context and validates by refreshing the Builder page. If validation fails, use `builder configure --mode ui` or Computer Use fallback.
 
 Print the exact setup text:
 

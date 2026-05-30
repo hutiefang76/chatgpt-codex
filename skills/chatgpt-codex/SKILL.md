@@ -13,29 +13,33 @@ Use this skill to turn this repository into a working local coding bridge for Ch
 
 1. Ask only for the minimal human inputs before changing local state.
 2. Run `chatgpt-codex chatgpt-preflight` before browser work.
-3. If login is needed, open `chatgpt-codex open-chatgpt-login` and wait for the human to finish login.
+3. If login is needed, open `chatgpt-codex builder open-login` and wait for the human to finish login in the Playwright persistent profile.
 4. Open ChatGPT Builder and confirm the account can create or edit a GPT with Actions.
 5. Install the local launcher.
 6. Save setup permissions in `.chatgpt-codex/permissions.json`.
 7. Create config for the target workspace.
 8. Start the local server and set up or use a public HTTPS route when ChatGPT web access is needed.
-9. Open ChatGPT Builder in Chrome only after browser automation is approved and the user has logged in manually.
-10. Verify health, schema, and one authenticated read-only action.
-11. Print or apply the final ChatGPT Builder fields.
+9. Use Playwright with a dedicated persistent profile as the primary ChatGPT Builder automation path.
+10. Use internal API sniffing only as a same-session acceleration layer, then refresh the Builder page and verify.
+11. Use Computer Use only as a fallback when Playwright cannot operate the page.
+12. Verify health, schema, and one authenticated read-only action.
+13. Print or apply the final ChatGPT Builder fields.
 
 中文：
 
 1. 修改本地状态前，只向用户询问真人必须提供的最小信息。
 2. 浏览器操作前运行 `chatgpt-codex chatgpt-preflight`。
-3. 如需登录，运行 `chatgpt-codex open-chatgpt-login` 打开页面，并等待真人完成登录。
+3. 如需登录，运行 `chatgpt-codex builder open-login` 打开 Playwright 持久化 profile，并等待真人完成登录。
 4. 打开 ChatGPT Builder，确认账号可以创建或编辑带 Actions 的 GPT。
 5. 安装本地启动器。
 6. 将配置授权保存到 `.chatgpt-codex/permissions.json`。
 7. 为目标 workspace 创建配置。
 8. 启动本地服务；当需要 ChatGPT 网页端访问时，配置或使用公网 HTTPS 入口。
-9. 只有在用户授权浏览器自动化并手动登录后，才在 Chrome 中打开 ChatGPT Builder。
-10. 验证健康检查、schema，以及一个带鉴权的只读 Action。
-11. 打印或填写最终可用于 ChatGPT Builder 的字段。
+9. 默认使用带独立持久化 profile 的 Playwright 作为 ChatGPT Builder 自动化主路径。
+10. 内部 API 嗅探只作为同会话加速层，之后必须刷新 Builder 页面并验证。
+11. 只有 Playwright 无法操作页面时，才用 Computer Use 兜底。
+12. 验证健康检查、schema，以及一个带鉴权的只读 Action。
+13. 打印或填写最终可用于 ChatGPT Builder 的字段。
 
 For a copyable user prompt and detailed checklist, read `references/agent-handoff.md`.
 
@@ -63,6 +67,8 @@ The setup is complete only when all of these are true:
 - ChatGPT Builder 已配置当前 schema URL 和 bearer token；
 - GPT chat can show and switch the active workspace using Actions.
 - GPT 对话可以通过 Actions 显示并切换当前工作区。
+- Playwright Builder automation can produce payloads, inspect login/editor readiness, sniff Builder routes, and run a smoke test.
+- Playwright Builder 自动化可以生成 payload、检查登录和编辑器就绪状态、嗅探 Builder 路由，并运行冒烟测试。
 
 ## Required Inputs / 必要信息
 
@@ -70,16 +76,16 @@ Ask for:
 
 询问：
 
-- Chrome human login to ChatGPT: required. The user logs in manually; the agent only operates after login.
-- Chrome 真人登录 ChatGPT：必须。用户手动登录；agent 只在登录后操作。
+- Human login to ChatGPT in the Playwright persistent profile: required. The user logs in manually; the agent only operates after login.
+- 在 Playwright 持久化 profile 中真人登录 ChatGPT：必须。用户手动登录；agent 只在登录后操作。
 - Workspace path: required, for example `/Users/me/project/demo`.
 - Workspace 路径：必须，例如 `/Users/me/project/demo`。
-- Chrome human login to Cloudflare: optional, only for a stable Cloudflare-managed hostname.
-- Chrome 真人登录 Cloudflare：可选，仅在需要稳定的 Cloudflare 托管域名时使用。
+- Browser human login to Cloudflare: optional, only for a stable Cloudflare-managed hostname.
+- 浏览器真人登录 Cloudflare：可选，仅在需要稳定的 Cloudflare 托管域名时使用。
 - Cloudflare-managed domain: optional. When provided, always use the fixed hostname `chatgpt-codex.<domain>`, for example `chatgpt-codex.hutiefang.net`.
 - Cloudflare 管理的域名：可选。提供时固定使用 `chatgpt-codex.<domain>`，例如 `chatgpt-codex.hutiefang.net`。
-- Local authorization: required. Confirm the agent may detect the OS, choose the route, install needed helpers, start local services, open Chrome, configure ChatGPT Builder after human login, write the workspace, and execute commands inside the workspace.
-- 本地授权：必须。确认 agent 可以自动识别系统、选择入口方案、安装必要辅助工具、启动本地服务、打开 Chrome、在真人登录后配置 ChatGPT Builder、写入 workspace，并在 workspace 内执行命令。
+- Local authorization: required. Confirm the agent may detect the OS, choose the route, install needed helpers, start local services, open the Playwright browser, configure ChatGPT Builder after human login, write the workspace, and execute commands inside the workspace.
+- 本地授权：必须。确认 agent 可以自动识别系统、选择入口方案、安装必要辅助工具、启动本地服务、打开 Playwright 浏览器、在真人登录后配置 ChatGPT Builder、写入 workspace，并在 workspace 内执行命令。
 
 Do not ask the user to choose an operating system, access plan, local port, or subdomain unless they explicitly want to override defaults. Detect the OS, use port `8766`, and choose the route automatically.
 
@@ -104,6 +110,45 @@ Never ask for ChatGPT passwords, browser cookies, OpenAI API keys, or unrelated 
 
 不要索要 ChatGPT 密码、浏览器 cookie、OpenAI API key 或无关密钥。
 
+## Builder Automation / Builder 自动化
+
+Primary path:
+
+主路径：
+
+- Use `chatgpt-codex builder open-login` to open ChatGPT in a Playwright persistent profile. This profile is dedicated to this tool and does not reuse daily Chrome.
+- 使用 `chatgpt-codex builder open-login` 在 Playwright 持久化 profile 中打开 ChatGPT。这个 profile 专用于本工具，不复用日常 Chrome。
+- The Chrome plugin is not a default dependency. Only use it if the user explicitly wants to reuse an already logged-in Chrome session.
+- Chrome 插件不是默认依赖。只有用户明确要求复用已登录的 Chrome 会话时才使用。
+- Use `chatgpt-codex builder doctor` after the human logs in to check the Builder page and Actions availability.
+- 用户登录后，用 `chatgpt-codex builder doctor` 检查 Builder 页面和 Actions 是否可用。
+- Use `chatgpt-codex builder payload --json` as the single source of truth for GPT name, description, instructions, schema URL, privacy URL, auth type, and visibility. It does not print the bearer token.
+- 使用 `chatgpt-codex builder payload --json` 作为 GPT 名称、描述、instructions、schema URL、privacy URL、鉴权类型和可见性的唯一字段来源。它不会打印 bearer token。
+- Use `chatgpt-codex builder configure --mode ui` for stable UI automation.
+- 使用 `chatgpt-codex builder configure --mode ui` 做稳定 UI 自动化。
+
+Internal API acceleration:
+
+内部 API 加速：
+
+- Use `chatgpt-codex builder sniff` to capture the Builder's internal route shape while the user or Playwright performs one save/configure flow.
+- 使用 `chatgpt-codex builder sniff`，在用户或 Playwright 执行一次保存或配置流程时捕获 Builder 内部路由形状。
+- The route map is saved as `.chatgpt-codex/builder-routes.json`, redacted, ignored by Git, and local to this machine.
+- route map 保存为 `.chatgpt-codex/builder-routes.json`，会脱敏，被 Git 忽略，并且只属于本机。
+- Replay internal API calls only inside the same Playwright browser context. Do not export cookies, sessions, or headers.
+- 内部 API replay 只能在同一个 Playwright 浏览器会话中执行。不要导出 cookie、session 或 headers。
+- Treat captured internal routes as unstable. If validation fails, fall back to UI automation.
+- 将捕获到的内部路由视为不稳定。如果验证失败，回退到 UI 自动化。
+
+Fallback:
+
+兜底：
+
+- Use Computer Use only when Playwright cannot operate the page because selectors broke, controls are not accessible, or a visual/system dialog blocks progress.
+- 只有在 Playwright 因 selector 失效、控件不可访问、视觉或系统弹窗阻塞而无法操作页面时，才使用 Computer Use 兜底。
+- Before claiming completion, run `chatgpt-codex builder smoke` or perform the equivalent real GPT `getWorkspaceStatus` Action test.
+- 声称完成前，运行 `chatgpt-codex builder smoke`，或执行等价的真实 GPT `getWorkspaceStatus` Action 测试。
+
 ## Commands / 命令
 
 Permissions template:
@@ -125,10 +170,14 @@ AI-native 管理：
 
 - Start with `chatgpt-codex status` to read machine-readable local state.
 - 先运行 `chatgpt-codex status` 读取机器可读的本地状态。
+- `status` reports `node_found`, `npx_found`, and `builder_profile_path`; Node/npx are needed for Playwright Builder automation, not for the local server.
+- `status` 会报告 `node_found`、`npx_found` 和 `builder_profile_path`；Node/npx 是 Playwright Builder 自动化需要的，本地服务本身不需要。
 - Use `chatgpt-codex chatgpt-preflight` before browser setup. It prints plan prerequisites, login handoff commands, Builder automation boundaries, and Builder fields without printing the token.
 - 浏览器配置前先用 `chatgpt-codex chatgpt-preflight`。它会打印套餐前提、登录交接命令、Builder 自动化边界和 Builder 字段，但不会打印 token。
-- Use `chatgpt-codex open-chatgpt-login` when the user must log in. Open the page, wait for the user to say login is complete, then continue.
-- 用户需要登录时用 `chatgpt-codex open-chatgpt-login`。打开页面，等待用户确认登录完成，再继续。
+- Use `chatgpt-codex builder payload --json`, `chatgpt-codex builder doctor`, `chatgpt-codex builder configure --mode ui`, `chatgpt-codex builder sniff`, and `chatgpt-codex builder smoke` for the Builder workflow.
+- Builder 流程使用 `chatgpt-codex builder payload --json`、`chatgpt-codex builder doctor`、`chatgpt-codex builder configure --mode ui`、`chatgpt-codex builder sniff` 和 `chatgpt-codex builder smoke`。
+- Use `chatgpt-codex builder open-login` when the user must log in. Open the Playwright browser, wait for the user to say login is complete, then continue with `chatgpt-codex builder doctor`.
+- 用户需要登录时用 `chatgpt-codex builder open-login`。打开 Playwright 浏览器，等待用户确认登录完成，再用 `chatgpt-codex builder doctor` 继续。
 - Use `chatgpt-codex ai-commands` to discover the local command catalog.
 - 用 `chatgpt-codex ai-commands` 获取本地命令目录。
 - Use `chatgpt-codex channel register --workspace <path> --public-base-url <url>` for first registration. It stores the public URL and token in `.chatgpt-codex/config.json` under the local repository root.
@@ -261,18 +310,21 @@ chatgpt-codex channel status
 chatgpt-codex verify
 ```
 
-If the user approved browser automation and is logged into ChatGPT in Chrome:
+If the user approved browser automation, use Playwright first:
 
-如果用户已授权浏览器自动化，并且已在 Chrome 登录 ChatGPT：
+如果用户已授权浏览器自动化，优先使用 Playwright：
 
 ```bash
 chatgpt-codex chatgpt-preflight
-chatgpt-codex open-chatgpt
+chatgpt-codex builder open-login
+chatgpt-codex builder doctor
+chatgpt-codex builder configure --mode ui
+chatgpt-codex builder smoke
 ```
 
-Use Chrome automation to create or edit the GPT, paste `chatgpt-codex gpt-instructions`, import the schema URL, set Bearer auth with `chatgpt-codex token`, and save as private. Do not request or store ChatGPT credentials, cookies, or API keys. The local project cannot create or save a GPT through a public local API; the Builder page must be filled by browser automation or by the human after login.
+Use `builder sniff` when you need to discover the ChatGPT Builder internal API shape. Replay only in the same Playwright browser context, then refresh and verify. Do not request or store ChatGPT credentials, cookies, or API keys. Computer Use is a fallback, not a default dependency.
 
-使用 Chrome 自动化创建或编辑 GPT，粘贴 `chatgpt-codex gpt-instructions`，导入 schema URL，用 `chatgpt-codex token` 设置 Bearer 鉴权，并保存为私有。不要索要或保存 ChatGPT 凭据、cookie 或 API key。本地项目不能通过公开本地 API 创建或保存 GPT；登录后必须由浏览器自动化或真人填写 Builder 网页。
+需要发现 ChatGPT Builder 内部 API 形状时使用 `builder sniff`。replay 只能在同一个 Playwright 浏览器会话中进行，然后刷新并验证。不要索要或保存 ChatGPT 凭据、cookie 或 API key。Computer Use 是兜底，不是默认依赖。
 
 In the GPT conversation, project switching flow is:
 
