@@ -1170,6 +1170,21 @@ def _setup(args, cfg_path: Path) -> int:
         public_url, tunnel_proc, tunnel_thread = _setup_public_route(args, config, cfg_path, server.server_port)
         if not public_url:
             return 1
+        reachable = _wait_health(public_url, args.timeout)
+        if not reachable:
+            print(json.dumps(
+                {
+                    "stage": "bridge_wait_failed",
+                    "ok": False,
+                    "public_base_url": public_url,
+                    "openapi_url": f"{public_url.rstrip('/')}/openapi.json",
+                    "message": "The public route was created but did not become reachable before timeout.",
+                    "cn_message": "公网入口已创建，但在超时前还不可访问。",
+                },
+                indent=2,
+                ensure_ascii=False,
+            ))
+            return 1
 
         result = _verify_actions(config, public_url, args.timeout)
         print(json.dumps(
@@ -1177,6 +1192,7 @@ def _setup(args, cfg_path: Path) -> int:
                 "stage": "bridge_verified",
                 "ok": result["ok"],
                 "public_base_url": public_url,
+                "reachable": reachable,
                 "openapi_url": f"{public_url.rstrip('/')}/openapi.json",
                 "active_workspace": config.active_workspace,
                 "workspace": str(config.workspace),

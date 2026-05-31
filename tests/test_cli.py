@@ -6,8 +6,10 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from chatgpt_codex.cli import main
+import chatgpt_codex.cli as cli
 from chatgpt_codex.config import AppConfig, load_config, load_permissions
 from chatgpt_codex.server import create_server
 
@@ -267,6 +269,66 @@ class CliTests(unittest.TestCase):
             self.assertIn("open_chatgpt_builder", plan["steps"])
             self.assertIn("smoke_test_saved_gpt", plan["steps"])
             self.assertFalse(plan["token_printed"])
+
+    def test_setup_waits_for_public_route_before_verifying_actions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            args = type(
+                "Args",
+                (),
+                {
+                    "dry_run": False,
+                    "run_setup_smoke": False,
+                    "workspace": str(workspace),
+                    "workspace_name": "demo",
+                    "host": "127.0.0.1",
+                    "port": 0,
+                    "public_base_url": "",
+                    "no_tunnel": False,
+                    "cloudflared": "cloudflared",
+                    "timeout": 10,
+                    "skip_builder": False,
+                    "builder_mode": "ui",
+                    "visibility": "private",
+                    "builder_wait_seconds": 1,
+                    "skip_smoke": False,
+                    "smoke_wait_seconds": 1,
+                    "force": False,
+                },
+            )()
+            calls = []
+
+            class FakeServer:
+                server_port = 8767
+
+                def serve_forever(self):
+                    return None
+
+                def shutdown(self):
+                    calls.append("shutdown")
+
+                def server_close(self):
+                    calls.append("server_close")
+
+            def fake_wait_health(*_):
+                calls.append("wait_health")
+                return False
+
+            def fake_verify(*_):
+                calls.append("verify_actions")
+                return {"ok": False, "checks": []}
+
+            with mock.patch("chatgpt_codex.cli.create_server", return_value=FakeServer()):
+                with mock.patch("chatgpt_codex.cli._setup_public_route", return_value=("https://actions.example.com", None, None)):
+                    with mock.patch("chatgpt_codex.cli._wait_health", side_effect=fake_wait_health):
+                        with mock.patch("chatgpt_codex.cli._verify_actions", side_effect=fake_verify):
+                            exit_code = cli._setup(args, config_path)
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("wait_health", calls)
+            self.assertNotIn("verify_actions", calls)
 
     def test_setup_smoke_runs_deterministic_local_acceptance(self):
         stdout = io.StringIO()
