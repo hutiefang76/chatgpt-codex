@@ -269,6 +269,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(plan["builder_command"], "chatgpt-codex builder setup")
             self.assertEqual(plan["builder_fallback"], "auto")
             self.assertEqual(plan["builder_challenge_grace_seconds"], 3)
+            self.assertEqual(plan["route_attempts"], 6)
             self.assertIn("prepare_local_bridge", plan["steps"])
             self.assertIn("open_chatgpt_builder", plan["steps"])
             self.assertIn("smoke_test_saved_gpt", plan["steps"])

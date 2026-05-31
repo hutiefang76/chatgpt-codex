@@ -170,6 +170,8 @@ First registration binds this local tool install to the exact workspace path you
 chatgpt-codex setup --workspace /absolute/path/to/your/project
 ```
 
+By default, setup tries up to 6 temporary public tunnel URLs when no Cloudflare account/domain is provided. This avoids failing a fresh install just because one generated quick-tunnel route is slow or unreachable.
+
 Low-level registration is still available when you already know the HTTPS URL:
 
 ```bash

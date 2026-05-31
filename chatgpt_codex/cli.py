@@ -86,7 +86,7 @@ def main(argv=None) -> int:
     setup_parser.add_argument("--host", default="127.0.0.1")
     setup_parser.add_argument("--port", type=int, default=8766)
     setup_parser.add_argument("--timeout", type=int, default=10, help="Local verify request timeout seconds. / 本地验证请求超时秒数。")
-    setup_parser.add_argument("--route-attempts", type=int, default=3, help="Quick-tunnel URL attempts before failing. / 临时隧道地址失败前的尝试次数。")
+    setup_parser.add_argument("--route-attempts", type=int, default=6, help="Quick-tunnel URL attempts before failing. / 临时隧道地址失败前的尝试次数。")
     setup_parser.add_argument("--builder-mode", choices=["ui", "hybrid", "api"], default="ui")
     setup_parser.add_argument("--visibility", choices=["private", "link", "store"], default="private")
     setup_parser.add_argument("--builder-wait-seconds", type=int, default=600, help="How long to wait for ChatGPT login/Builder save. / 等待 ChatGPT 登录和 Builder 保存的秒数。")
@@ -1119,7 +1119,7 @@ def _setup_plan(args, cfg_path: Path) -> dict:
         "public_base_url": args.public_base_url.rstrip("/") if args.public_base_url else "",
         "route": "quick-tunnel" if uses_tunnel else ("provided-public-url" if args.public_base_url else "local-only"),
         "cloudflared": args.cloudflared,
-        "route_attempts": max(1, int(getattr(args, "route_attempts", 3) or 1)) if uses_tunnel else 1,
+        "route_attempts": max(1, int(getattr(args, "route_attempts", 6) or 1)) if uses_tunnel else 1,
         "builder_command": "chatgpt-codex builder setup",
         "builder_mode": args.builder_mode,
         "visibility": args.visibility,
@@ -1182,7 +1182,7 @@ def _setup(args, cfg_path: Path) -> int:
         public_url = ""
         reachable = False
         use_quick_tunnel = not args.public_base_url and not args.no_tunnel
-        route_attempts = max(1, int(getattr(args, "route_attempts", 3) or 1)) if use_quick_tunnel else 1
+        route_attempts = max(1, int(getattr(args, "route_attempts", 6) or 1)) if use_quick_tunnel else 1
         for route_attempt in range(1, route_attempts + 1):
             public_url, tunnel_proc, tunnel_thread = _setup_public_route(args, config, cfg_path, server.server_port)
             if not public_url:

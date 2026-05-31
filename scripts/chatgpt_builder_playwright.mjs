@@ -806,21 +806,33 @@ async function runSetup(args) {
     } else {
       const ui = await configureUi(page, config);
       if (ui.blocked_by_challenge) {
+        const handoff = String(args.fallback || "auto").toLowerCase() === "none"
+          ? null
+          : builderFallbackHandoff({ blockedByChallenge: true, url: page.url(), title: await page.title().catch(() => "") }, args, "configure_fields_challenge");
         result = {
           ok: false,
           mode: args.mode,
-          stage: "configure_fields",
+          stage: handoff ? "builder_fallback_required" : "configure_fields",
+          fallback_required: Boolean(handoff),
           saved: false,
           gpt_url: "",
           blocked_by_challenge: true,
           schema_url: ui.schema_url,
           privacy_url: ui.privacy_url,
           profile: args.profile,
-          manual_steps_required: [
-            "Complete the Cloudflare/ChatGPT challenge in the opened browser.",
-            "Rerun `chatgpt-codex builder setup`.",
-          ],
-          note: "Builder became blocked by a challenge while configuring fields.",
+          ...(handoff ? { fallback: handoff.fallback } : {}),
+          manual_steps_required: handoff
+            ? handoff.fallback.human_required
+            : [
+                "Complete the Cloudflare/ChatGPT challenge in the opened browser.",
+                "Rerun `chatgpt-codex builder setup`.",
+              ],
+          note: handoff
+            ? "Builder became blocked while configuring fields, so automatic agent fallback was triggered."
+            : "Builder became blocked by a challenge while configuring fields.",
+          cn_note: handoff
+            ? "Builder 配置字段时被验证页阻塞，已自动触发 agent 兜底交接。"
+            : "Builder 配置字段时被验证页阻塞。",
         };
         await writeJsonPrivate(args.state, {
           schema_version: 1,
@@ -828,6 +840,7 @@ async function runSetup(args) {
           mode: args.mode,
           visibility: args.visibility,
           setup_stage: result.stage,
+          fallback_required: Boolean(handoff),
           blocked_by_challenge: true,
           last_builder_url: page.url(),
         });

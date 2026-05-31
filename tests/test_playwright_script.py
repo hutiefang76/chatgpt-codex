@@ -72,6 +72,7 @@ class PlaywrightScriptSelfTest(unittest.TestCase):
         self.assertIn("action_attempt", script)
         self.assertIn("schema_textarea", script)
         self.assertIn("auth_token", script)
+        self.assertIn("configure_fields_challenge", script)
 
     @unittest.skipUnless(shutil.which("npx"), "npx is required to test the packaged Playwright load path")
     def test_self_test_passes_through_npx_package_playwright(self):

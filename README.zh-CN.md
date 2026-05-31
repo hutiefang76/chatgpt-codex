@@ -170,6 +170,8 @@ chatgpt-codex builder smoke
 chatgpt-codex setup --workspace /absolute/path/to/your/project
 ```
 
+默认没有提供 Cloudflare 账号或域名时，setup 会最多尝试 6 个临时公网隧道地址，避免全新安装因为某一个随机 quick-tunnel 地址慢或不可达就直接失败。
+
 如果你已经知道 HTTPS 地址，也可以使用底层注册命令：
 
 ```bash
