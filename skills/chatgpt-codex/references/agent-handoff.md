@@ -14,7 +14,7 @@ Ask me only for the minimal human inputs:
 
 Use a temporary HTTPS tunnel when I do not provide Cloudflare login plus a domain. Use the fixed hostname chatgpt-codex.<domain> when both are available.
 
-Then install and run `chatgpt-codex setup --workspace <path>`. Open the ChatGPT login page for me when needed, wait for my login, and continue automatically. Do not ask me to choose the OS, access plan, port, TTL, or subdomain unless I explicitly override defaults. Do not set a TTL unless I explicitly ask for a short-lived session.
+Then install and run `chatgpt-codex setup --workspace <path>`. Open the ChatGPT login page for me when needed, wait for my login, and continue automatically. If setup returns `builder_fallback_required`, use the printed Chrome/Computer Use handoff while the bridge stays running. Do not ask me to choose the OS, access plan, port, TTL, or subdomain unless I explicitly override defaults. Do not set a TTL unless I explicitly ask for a short-lived session.
 
 Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelated secrets.
 ```
@@ -31,7 +31,7 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 
 如果我没有同时提供 Cloudflare 登录和域名，使用临时 HTTPS 隧道。如果两者都具备，使用固定域名 chatgpt-codex.<domain>。
 
-然后完成安装并运行 `chatgpt-codex setup --workspace <path>`。需要我登录时直接打开 ChatGPT 登录页，等待我登录后自动继续。除非我明确要覆盖默认值，不要问我选择操作系统、访问方案、端口、TTL 或子域名。除非我明确要求短时会话，否则不要设置 TTL。
+然后完成安装并运行 `chatgpt-codex setup --workspace <path>`。需要我登录时直接打开 ChatGPT 登录页，等待我登录后自动继续。如果 setup 返回 `builder_fallback_required`，按输出的 Chrome/Computer Use 交接信息接管，此时本地桥会继续运行。除非我明确要覆盖默认值，不要问我选择操作系统、访问方案、端口、TTL 或子域名。除非我明确要求短时会话，否则不要设置 TTL。
 
 不要索要我的 ChatGPT 密码、浏览器 cookie、OpenAI API key 或无关密钥。
 ```
@@ -62,6 +62,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 已用 `chatgpt-codex channel status` 检查通道状态。
 - Temporary tunnel used by default; fixed hostname `chatgpt-codex.<domain>` used when Cloudflare login and domain are available.
 - 默认使用临时隧道；当 Cloudflare 登录和域名都具备时，使用固定域名 `chatgpt-codex.<domain>`。
+- Temporary quick-tunnel URL retries completed if the first public route is unreachable.
+- 第一个临时隧道公网地址不可达时，已自动换新地址重试。
 - `/health` works.
 - `/health` 可访问。
 - `/openapi.json` works.
@@ -74,6 +76,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - `chatgpt-codex verify` 通过。
 - Builder configured by `chatgpt-codex builder setup` with Action/auth/save automation attempted, or a machine-readable Builder blocker captured.
 - 已由 `chatgpt-codex builder setup` 配置 Builder 并尝试自动配置 Action/鉴权/保存，或已捕获机器可读的 Builder 阻塞原因。
+- If `builder_fallback_required` appears, Chrome/Computer Use handoff is used while the top-level setup bridge remains running.
+- 如果出现 `builder_fallback_required`，在顶层 setup 保持本地桥运行时使用 Chrome/Computer Use 交接。
 - GPT instructions include `workspace_status`, `list_workspaces`, and `switch_workspace`, and require showing the current local directory after each switch.
 - GPT Instructions 包含 `workspace_status`、`list_workspaces` 和 `switch_workspace`，并要求每次切换后显示当前本地目录。
 - ChatGPT Builder flow waited for the user's manual login in the Playwright persistent profile.

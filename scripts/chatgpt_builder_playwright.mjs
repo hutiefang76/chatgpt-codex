@@ -258,6 +258,53 @@ function classifyBuilderState(url, title, bodyText, hasTurnstile) {
   return { loggedIn, hasEditor, hasActions, blockedByChallenge };
 }
 
+function numericArg(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function shouldUseBuilderFallback(status, challengeStartedAt, now, args = {}) {
+  if (String(args.fallback || "auto").toLowerCase() === "none") return false;
+  if (!status || !status.blockedByChallenge || challengeStartedAt == null) return false;
+  const graceSeconds = Math.max(0, numericArg(args.challenge_grace_seconds, 45));
+  return Number(now) - Number(challengeStartedAt) >= graceSeconds * 1000;
+}
+
+function builderFallbackHandoff(status = {}, args = {}, trigger = "playwright_challenge") {
+  return {
+    stage: "builder_fallback_required",
+    fallback_required: true,
+    blocked_by_challenge: Boolean(status.blockedByChallenge),
+    fallback: {
+      kind: "chrome_or_computer_use",
+      trigger,
+      can_continue_with_ai_agent: true,
+      local_cli_can_finish_without_browser_control: false,
+      human_required: [
+        "Only complete ChatGPT login or challenge if the browser is not already signed in.",
+      ],
+      open_url: BUILDER_URL,
+      profile_path: args.profile || "",
+      read_fields_command: "chatgpt-codex builder payload --json",
+      credential_command: "chatgpt-codex token",
+      commands_after_save: [
+        "chatgpt-codex builder smoke",
+        "chatgpt-codex verify",
+      ],
+      agent_steps: [
+        "Use Chrome/Computer Use browser control to open ChatGPT Builder in the user's normal browser session.",
+        "Read Builder fields from `chatgpt-codex builder payload --json` and the credential value from `chatgpt-codex token`.",
+        "Create or update the private GPT, import the OpenAPI schema URL, set API key authentication to bearer-auth, paste the credential value, save, and open the saved /g/ URL.",
+        "Run the smoke and verify commands after the saved GPT URL is available.",
+      ],
+      note: "Playwright is blocked by a ChatGPT/Cloudflare challenge. The CLI returns this handoff so an AI agent with browser control can continue instead of waiting.",
+      cn_note: "Playwright 被 ChatGPT/Cloudflare 验证页阻塞。CLI 返回此交接信息，具备浏览器控制能力的 AI agent 可直接接管，而不是继续等待。",
+    },
+    url: status.url || BUILDER_URL,
+    title: status.title || "",
+  };
+}
+
 async function detectBuilder(page) {
   await page.goto(BUILDER_URL, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
@@ -662,14 +709,23 @@ async function runConfigure(args) {
   return Boolean(result && result.ok);
 }
 
-async function waitForBuilderReady(page, maxSeconds) {
+async function waitForBuilderReady(page, maxSeconds, args = {}) {
   const waitSeconds = Number(maxSeconds) > 0 ? Number(maxSeconds) : 600;
   const deadline = Date.now() + Math.max(10, waitSeconds) * 1000;
   let lastStatus = null;
+  let challengeStartedAt = null;
   while (Date.now() < deadline) {
     lastStatus = await detectBuilder(page);
     if (lastStatus.loggedIn && lastStatus.hasEditor && !lastStatus.blockedByChallenge) {
       return { ok: true, ...lastStatus };
+    }
+    if (lastStatus.blockedByChallenge) {
+      challengeStartedAt = challengeStartedAt == null ? Date.now() : challengeStartedAt;
+      if (shouldUseBuilderFallback(lastStatus, challengeStartedAt, Date.now(), args)) {
+        return { ok: false, ...lastStatus, ...builderFallbackHandoff(lastStatus, args) };
+      }
+    } else {
+      challengeStartedAt = null;
     }
     process.stderr.write(`${JSON.stringify({
       stage: "waiting_for_chatgpt_login_or_builder",
@@ -683,6 +739,9 @@ async function waitForBuilderReady(page, maxSeconds) {
     }, null, 2)}\n`);
     await page.waitForTimeout(3000);
   }
+  if (lastStatus && lastStatus.blockedByChallenge && String(args.fallback || "auto").toLowerCase() !== "none") {
+    return { ok: false, ...lastStatus, ...builderFallbackHandoff(lastStatus, args, "playwright_challenge_timeout") };
+  }
   return { ok: false, ...(lastStatus || {}) };
 }
 
@@ -695,31 +754,49 @@ async function runSetup(args) {
   const page = await context.newPage();
   let result;
   try {
-    const ready = await waitForBuilderReady(page, waitSeconds);
+    const ready = await waitForBuilderReady(page, waitSeconds, args);
     if (!ready.ok) {
-      result = {
-        ok: false,
-        mode: args.mode,
-        stage: "waiting_for_login_or_builder",
-        logged_in: Boolean(ready.loggedIn),
-        has_editor: Boolean(ready.hasEditor),
-        blocked_by_challenge: Boolean(ready.blockedByChallenge),
-        url: ready.url || page.url(),
-        title: ready.title || "",
-        profile: args.profile,
-        manual_steps_required: [
-          "Complete ChatGPT login/challenge in the opened Playwright browser.",
-          "Rerun `chatgpt-codex setup --workspace <path>` or `chatgpt-codex builder setup`.",
-          "If the challenge persists in the Playwright profile, use the Computer Use or existing-Chrome fallback.",
-        ],
-        note: "Timed out before ChatGPT Builder became usable.",
-      };
+      result = ready.fallback_required
+        ? {
+            ok: false,
+            mode: args.mode,
+            stage: "builder_fallback_required",
+            fallback_required: true,
+            logged_in: Boolean(ready.loggedIn),
+            has_editor: Boolean(ready.hasEditor),
+            blocked_by_challenge: Boolean(ready.blockedByChallenge),
+            url: ready.url || page.url(),
+            title: ready.title || "",
+            profile: args.profile,
+            fallback: ready.fallback,
+            manual_steps_required: ready.fallback.human_required,
+            note: "Playwright remained blocked long enough to trigger automatic agent fallback.",
+            cn_note: "Playwright 持续被阻塞，已自动触发 agent 兜底交接。",
+          }
+        : {
+            ok: false,
+            mode: args.mode,
+            stage: "waiting_for_login_or_builder",
+            logged_in: Boolean(ready.loggedIn),
+            has_editor: Boolean(ready.hasEditor),
+            blocked_by_challenge: Boolean(ready.blockedByChallenge),
+            url: ready.url || page.url(),
+            title: ready.title || "",
+            profile: args.profile,
+            manual_steps_required: [
+              "Complete ChatGPT login/challenge in the opened Playwright browser.",
+              "Rerun `chatgpt-codex setup --workspace <path>` or `chatgpt-codex builder setup`.",
+              "If the challenge persists in the Playwright profile, use the Computer Use or existing-Chrome fallback.",
+            ],
+            note: "Timed out before ChatGPT Builder became usable.",
+          };
       await writeJsonPrivate(args.state, {
         schema_version: 1,
         updated_at: new Date().toISOString(),
         mode: args.mode,
         visibility: args.visibility,
         setup_stage: result.stage,
+        fallback_required: Boolean(result.fallback_required),
         blocked_by_challenge: result.blocked_by_challenge,
         last_builder_url: page.url(),
       });
@@ -922,12 +999,27 @@ async function runSelfTest() {
   expect("parses_wait_seconds", parsed.wait_seconds === "5");
   const setupParsed = parseArgs(["node", "script", "setup", "--wait-seconds", "9"]);
   expect("parses_setup_wait_seconds", setupParsed.command === "setup" && setupParsed.wait_seconds === "9");
+  const fallbackParsed = parseArgs(["node", "script", "setup", "--fallback", "auto", "--challenge-grace-seconds", "4"]);
+  expect("parses_setup_fallback", fallbackParsed.fallback === "auto" && fallbackParsed.challenge_grace_seconds === "4");
   expect("smoke_prompt_mentions_action", SMOKE_PROMPT.includes("workspace_status"));
   expect("smoke_success_detects_workspace_path", isSmokeSuccessful("assistant: active_workspace demo workspace /Users/me/project/demo"));
   expect("smoke_success_rejects_prompt_only", !isSmokeSuccessful(SMOKE_PROMPT));
   const challenge = classifyBuilderState("https://chatgpt.com/gpts/editor", "请稍候…", "", true);
   expect("builder_challenge_detected", challenge.blockedByChallenge && !challenge.hasEditor);
   expect("setup_timeout_step_detects_challenge", challenge.blockedByChallenge && !challenge.loggedIn);
+  const challengeStatus = { ...challenge, url: BUILDER_URL, title: "请稍候…" };
+  const now = Date.now();
+  expect("builder_challenge_fallback_after_grace", shouldUseBuilderFallback(challengeStatus, now - 5000, now, fallbackParsed));
+  expect("builder_challenge_no_fallback_when_disabled", !shouldUseBuilderFallback(challengeStatus, now - 5000, now, { fallback: "none", challenge_grace_seconds: "0" }));
+  const handoff = builderFallbackHandoff(challengeStatus, { profile: "/tmp/chatgpt-codex-profile" });
+  expect(
+    "builder_fallback_handoff_is_machine_readable",
+    handoff.stage === "builder_fallback_required"
+      && handoff.fallback_required
+      && handoff.fallback.kind === "chrome_or_computer_use"
+      && handoff.fallback.read_fields_command.includes("builder payload")
+      && handoff.fallback.commands_after_save.includes("chatgpt-codex verify"),
+  );
 
   let playwrightLoaded = false;
   let playwrightHasChromium = false;

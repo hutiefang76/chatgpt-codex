@@ -79,7 +79,7 @@ chatgpt-codex setup --workspace "C:\absolute\path\to\your\project"
 
 如果 PowerShell 阻止激活脚本，在当前终端运行 `Set-ExecutionPolicy -Scope Process Bypass -Force`，然后重新激活。
 
-`setup` 会准备本地桥、启动或使用公网 HTTPS 入口、验证 Action API、打开 ChatGPT Builder、等待真人登录、捕获保存后的 GPT 地址，并在可行时运行 `builder smoke`。完成后桥会继续运行，直到按 `Ctrl-C`。
+`setup` 会准备本地桥、启动或使用公网 HTTPS 入口、验证 Action API、打开 ChatGPT Builder、等待真人登录、捕获保存后的 GPT 地址，并在可行时运行 `builder smoke`。临时隧道第一个地址不可达时会自动换新地址重试。完成后桥会继续运行，直到按 `Ctrl-C`。
 
 只看计划、不启动浏览器和隧道：
 
@@ -114,6 +114,7 @@ chatgpt-codex --lang zh status
 chatgpt-codex ai-commands
 chatgpt-codex chatgpt-preflight
 chatgpt-codex setup --workspace /absolute/path/to/project --dry-run
+chatgpt-codex setup --workspace /absolute/path/to/project --builder-fallback auto --builder-challenge-grace-seconds 45
 chatgpt-codex setup-smoke
 chatgpt-codex api-smoke
 chatgpt-codex channel status
@@ -155,7 +156,7 @@ chatgpt-codex builder smoke
 
 `builder setup` 会在 Playwright 持久化 profile 中打开 ChatGPT Builder，等待用户完成登录或浏览器验证，填写稳定的 Builder 字段，尝试自动配置 Action/鉴权/保存，等待保存后的 `https://chatgpt.com/g/...` 地址，并写入 `.chatgpt-codex/builder.json`。
 
-如果 `builder doctor`、`builder setup` 或 `builder configure` 报告 `blockedByChallenge` / `blocked_by_challenge`，先在该 Playwright 浏览器中完成 ChatGPT 或 Cloudflare 验证，然后重新运行命令。如果仍然卡住，切换到 Computer Use 或已登录 Chrome 兜底操作 Builder UI。
+如果 `builder setup` 在宽限时间后仍停在 ChatGPT 或 Cloudflare 验证页，它会返回 `stage: "builder_fallback_required"`，并给出机器可读的 Chrome/Computer Use 兜底交接信息。顶层 `setup` 遇到这种情况时会保持本地桥和公网入口继续运行，agent 可以直接用用户普通浏览器接管，不会丢掉已经保存的 URL 或 token。只有你明确想等到普通超时时，才使用 `--fallback none`。
 
 `builder smoke` 会打开保存后的 GPT，提交一次 `workspace_status` 冒烟提示，并且只有页面出现 workspace 状态结果时才返回成功。`builder configure --mode hybrid` 会同时捕获脱敏后的 Builder 网络流量。`builder sniff` 是显式内部 API 发现流程：在打开的浏览器里执行一次 Builder 保存或配置动作，然后按 `Ctrl-C`，脱敏后的 route map 会保存到 `.chatgpt-codex/builder-routes.json`。
 
@@ -221,7 +222,8 @@ chatgpt-codex workspace switch api
 3. 运行 `chatgpt-codex setup --workspace <path>`。
 4. 在打开的 Playwright 浏览器里完成 ChatGPT 登录。
 5. 让 setup 验证本地桥、配置 Builder、捕获保存后的 GPT 地址，并运行 `builder smoke`。
-6. 在 GPT 对话里，文件或命令操作前使用 `workspace_status`、`list_workspaces` 和 `switch_workspace`。
+6. 如果 Playwright 返回 `builder_fallback_required`，让 agent 按输出交接信息使用 Chrome/Computer Use；setup 会保持桥存活。
+7. 在 GPT 对话里，文件或命令操作前使用 `workspace_status`、`list_workspaces` 和 `switch_workspace`。
 
 ## 底层命令
 

@@ -17,7 +17,7 @@ Use this skill to turn this repository into a working local coding bridge for Ch
 4. Run `chatgpt-codex setup --workspace <path>` as the production entry point.
 5. Let setup open ChatGPT Builder, wait for the human login in the Playwright persistent profile, configure the stable fields, attempt Action/auth/save automation, capture the saved GPT URL, and run the smoke test when possible.
 6. Use internal API sniffing only as a same-session acceleration layer, then refresh the Builder page and verify.
-7. Use Computer Use only as a fallback when Playwright cannot operate the page.
+7. If setup returns `builder_fallback_required`, use the printed Chrome/Computer Use handoff immediately; top-level setup keeps the bridge and public route alive.
 8. Verify health, schema, and one authenticated read-only action before claiming completion.
 
 中文：
@@ -28,7 +28,7 @@ Use this skill to turn this repository into a working local coding bridge for Ch
 4. 生产级入口运行 `chatgpt-codex setup --workspace <path>`。
 5. 让 setup 打开 ChatGPT Builder、等待真人在 Playwright 持久化 profile 中登录、配置稳定字段、尝试自动配置 Action/鉴权/保存、捕获保存后的 GPT 地址，并在可行时运行冒烟测试。
 6. 内部 API 嗅探只作为同会话加速层，之后必须刷新 Builder 页面并验证。
-7. 只有 Playwright 无法操作页面时，才用 Computer Use 兜底。
+7. 如果 setup 返回 `builder_fallback_required`，立即按输出的 Chrome/Computer Use 交接信息继续；顶层 setup 会保持本地桥和公网入口存活。
 8. 声称完成前，验证健康检查、schema，以及一个带鉴权的只读 Action。
 
 For a copyable user prompt and detailed checklist, read `references/agent-handoff.md`.
@@ -59,6 +59,8 @@ The setup is complete only when all of these are true:
 - GPT 对话可以通过 Actions 显示并切换当前工作区。
 - Playwright Builder automation can produce payloads, inspect login/editor readiness, sniff Builder routes, and run a smoke test.
 - Playwright Builder 自动化可以生成 payload、检查登录和编辑器就绪状态、嗅探 Builder 路由，并运行冒烟测试。
+- Builder challenge fallback is machine-readable and keeps the bridge alive during agent handoff.
+- Builder 验证页兜底是机器可读的，并在 agent 接管期间保持本地桥存活。
 
 ## Required Inputs / 必要信息
 
@@ -136,6 +138,8 @@ Fallback:
 
 - Use Computer Use only when Playwright cannot operate the page because selectors broke, controls are not accessible, or a visual/system dialog blocks progress.
 - 只有在 Playwright 因 selector 失效、控件不可访问、视觉或系统弹窗阻塞而无法操作页面时，才使用 Computer Use 兜底。
+- With default `--fallback auto`, `builder setup` returns `stage: "builder_fallback_required"` after a persistent challenge page. Use the returned `fallback.agent_steps` instead of asking the user again.
+- 默认 `--fallback auto` 下，`builder setup` 在验证页持续阻塞后返回 `stage: "builder_fallback_required"`。按返回的 `fallback.agent_steps` 执行，不要再次询问用户。
 - Before claiming completion, run `chatgpt-codex builder smoke` or perform the equivalent real GPT `getWorkspaceStatus` Action test.
 - 声称完成前，运行 `chatgpt-codex builder smoke`，或执行等价的真实 GPT `getWorkspaceStatus` Action 测试。
 
@@ -160,6 +164,8 @@ AI-native 管理：
 
 - Use `chatgpt-codex setup --workspace <path>` as the production entry point. It registers the workspace, starts the server, starts or uses the HTTPS route, verifies the Action API, opens ChatGPT Builder, waits for human login, attempts Action/auth/save automation, captures the saved GPT URL, and runs the smoke test when possible.
 - 用 `chatgpt-codex setup --workspace <path>` 作为生产级入口。它会注册 workspace、启动服务、启动或使用 HTTPS 入口、验证 Action API、打开 ChatGPT Builder、等待真人登录、尝试自动配置 Action/鉴权/保存、捕获保存后的 GPT 地址，并在可行时运行冒烟测试。
+- Temporary quick-tunnel URLs are retried automatically when the first route is not reachable.
+- 第一个临时隧道地址不可达时，会自动换新地址重试。
 - Run `chatgpt-codex setup-smoke` before touching the real workspace. It verifies local server setup, the Action API smoke path, bootstrap workspace rebinding, Builder dry-run commands, and the Node Builder bridge self-test in temporary workspaces.
 - 触碰真实 workspace 前先运行 `chatgpt-codex setup-smoke`。它会在临时 workspace 中验证本地服务、Action API 冒烟路径、bootstrap 重新绑定 workspace、Builder dry-run 命令和 Node Builder bridge 自测。
 - Start with `chatgpt-codex status` to read machine-readable local state.
@@ -170,8 +176,8 @@ AI-native 管理：
 - 浏览器配置前先用 `chatgpt-codex chatgpt-preflight`。它会打印套餐前提、登录交接命令、Builder 自动化边界和 Builder 字段，但不会打印 token。
 - Use `chatgpt-codex builder payload --json`, `chatgpt-codex builder setup`, `chatgpt-codex builder sniff`, and `chatgpt-codex builder smoke` when repairing the Builder workflow separately.
 - 单独修复 Builder 流程时使用 `chatgpt-codex builder payload --json`、`chatgpt-codex builder setup`、`chatgpt-codex builder sniff` 和 `chatgpt-codex builder smoke`。
-- If `builder doctor`, `builder setup`, or `builder configure` returns `blockedByChallenge` / `blocked_by_challenge`, ask the user to complete the challenge in the Playwright browser. If it persists, use Computer Use or Chrome fallback for the Builder UI.
-- 如果 `builder doctor`、`builder setup` 或 `builder configure` 返回 `blockedByChallenge` / `blocked_by_challenge`，请用户在 Playwright 浏览器中完成人机验证。如果仍然卡住，使用 Computer Use 或 Chrome 兜底操作 Builder UI。
+- If `builder setup` returns `builder_fallback_required`, use Computer Use or Chrome fallback immediately. In top-level `setup`, the bridge remains running so the printed public URL and token stay valid during the handoff.
+- 如果 `builder setup` 返回 `builder_fallback_required`，立即使用 Computer Use 或 Chrome 兜底。顶层 `setup` 会保持桥继续运行，因此输出的公网 URL 和 token 在交接期间仍然有效。
 - Use `chatgpt-codex ai-commands` to discover the local command catalog.
 - 用 `chatgpt-codex ai-commands` 获取本地命令目录。
 - Prefer `chatgpt-codex setup --workspace <path>` for first registration. Use `chatgpt-codex bootstrap --workspace <path>` or `chatgpt-codex channel register --workspace <path> --public-base-url <url>` only for low-level manual setup.

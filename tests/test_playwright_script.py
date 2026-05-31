@@ -53,6 +53,9 @@ class PlaywrightScriptSelfTest(unittest.TestCase):
         checks = {item["name"]: item["ok"] for item in payload["checks"]}
         self.assertTrue(checks["parses_setup_wait_seconds"])
         self.assertTrue(checks["setup_timeout_step_detects_challenge"])
+        self.assertTrue(checks["parses_setup_fallback"])
+        self.assertTrue(checks["builder_challenge_fallback_after_grace"])
+        self.assertTrue(checks["builder_fallback_handoff_is_machine_readable"])
 
     def test_smoke_is_not_just_url_open(self):
         script = SCRIPT.read_text(encoding="utf-8")

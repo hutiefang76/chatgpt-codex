@@ -24,7 +24,7 @@ Ask me only for the minimal human inputs:
 
 Use a temporary HTTPS tunnel when I do not provide Cloudflare login plus a domain. Use the fixed hostname chatgpt-codex.<domain> when both are available.
 
-Then install and run `chatgpt-codex setup --workspace <path>`. Open the ChatGPT login page for me when needed, wait for my login, and continue automatically. Do not ask me to choose the OS, access plan, port, or subdomain unless I explicitly override defaults.
+Then install and run `chatgpt-codex setup --workspace <path>`. Open the ChatGPT login page for me when needed, wait for my login, and continue automatically. If setup returns `builder_fallback_required`, use the printed Chrome/Computer Use handoff while the bridge stays running. Do not ask me to choose the OS, access plan, port, or subdomain unless I explicitly override defaults.
 
 Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelated secrets.
 ```
@@ -41,7 +41,7 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 
 如果我没有同时提供 Cloudflare 登录和域名，使用临时 HTTPS 隧道。如果两者都具备，使用固定域名 chatgpt-codex.<domain>。
 
-然后完成安装并运行 `chatgpt-codex setup --workspace <path>`。需要我登录时直接打开 ChatGPT 登录页，等待我登录后自动继续。除非我明确要覆盖默认值，不要问我选择操作系统、访问方案、端口或子域名。
+然后完成安装并运行 `chatgpt-codex setup --workspace <path>`。需要我登录时直接打开 ChatGPT 登录页，等待我登录后自动继续。如果 setup 返回 `builder_fallback_required`，按输出的 Chrome/Computer Use 交接信息接管，此时本地桥会继续运行。除非我明确要覆盖默认值，不要问我选择操作系统、访问方案、端口或子域名。
 
 不要索要我的 ChatGPT 密码、浏览器 cookie、OpenAI API key 或无关密钥。
 ```
@@ -56,6 +56,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 触碰真实 workspace 前先运行 `chatgpt-codex setup-smoke`；它会用临时 workspace 验证本地配置路径。
 - Run `chatgpt-codex setup --workspace <path>` as the production entry point. It registers the workspace, starts the local server, starts or uses the public HTTPS route, verifies the Action API, opens ChatGPT Builder, waits for human login, attempts Action/auth/save automation, captures the saved GPT URL, and runs the smoke test when possible.
 - 生产级入口运行 `chatgpt-codex setup --workspace <path>`。它会注册 workspace、启动本地服务、启动或使用公网 HTTPS 入口、验证 Action API、打开 ChatGPT Builder、等待真人登录、尝试自动配置 Action/鉴权/保存、捕获保存后的 GPT 地址，并在可行时运行冒烟测试。
+- If the default temporary tunnel URL is not reachable, setup retries with fresh quick-tunnel URLs before failing.
+- 如果默认临时隧道地址不可达，setup 会自动换新临时隧道地址重试，全部失败后才退出。
 - Use `chatgpt-codex status` and `chatgpt-codex ai-commands` for machine-readable local management.
 - 使用 `chatgpt-codex status` 和 `chatgpt-codex ai-commands` 做机器可读的本地管理。
 - Run `chatgpt-codex chatgpt-preflight` before browser setup. It reports account prerequisites, login handoff commands, Builder limits, and Builder fields without printing the bearer token.
@@ -76,8 +78,8 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 没有 Cloudflare 登录/域名时使用临时 HTTPS 隧道；两者都提供时使用 `chatgpt-codex.<domain>`。
 - Use `chatgpt-codex builder setup` only when you need to repair or rerun the Builder portion separately from the top-level setup command.
 - 只有需要单独修复或重跑 Builder 部分时，才使用 `chatgpt-codex builder setup`。
-- If Playwright reports `blockedByChallenge` / `blocked_by_challenge`, ask the user to complete the challenge in the Playwright browser; if it persists, switch to Computer Use or Chrome fallback for the Builder UI.
-- 如果 Playwright 报告 `blockedByChallenge` / `blocked_by_challenge`，请用户在 Playwright 浏览器里完成人机验证；如果仍然卡住，切换到 Computer Use 或 Chrome 兜底操作 Builder UI。
+- If Playwright returns `builder_fallback_required`, do not ask again. Use the printed Chrome/Computer Use handoff; top-level setup keeps the bridge and public route alive for that handoff.
+- 如果 Playwright 返回 `builder_fallback_required`，不要再次询问。按输出的 Chrome/Computer Use 交接信息继续；顶层 setup 会保持本地桥和公网入口存活。
 - If internal API acceleration is needed, run `chatgpt-codex builder sniff`, replay only in the same Playwright browser context, then refresh and verify. Stop if the editor or Actions section is unavailable.
 - 如果需要内部 API 加速，运行 `chatgpt-codex builder sniff`；replay 只能在同一个 Playwright 浏览器会话中进行，然后刷新并验证。如果编辑器或 Actions 区域不可用，停止。
 - Ensure GPT instructions mention `workspace_status`, `list_workspaces`, and `switch_workspace` for showing and switching the current local directory.

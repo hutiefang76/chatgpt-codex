@@ -105,9 +105,9 @@ chatgpt-codex authorize `
 chatgpt-codex setup --workspace "$Workspace"
 ```
 
-`setup` already opens Builder, waits for login, attempts Action/auth/save automation, and runs the smoke test when possible. Use `chatgpt-codex builder sniff` to discover internal Builder API routes only inside the same Playwright browser context. Use Computer Use only as a fallback. Never ask for or store ChatGPT passwords, cookies, browser session data, or API keys.
+`setup` already opens Builder, waits for login, attempts Action/auth/save automation, retries unreachable temporary quick-tunnel URLs, and runs the smoke test when possible. If it returns `builder_fallback_required`, use the printed Chrome/Computer Use handoff; top-level setup keeps the bridge and public route alive. Use `chatgpt-codex builder sniff` to discover internal Builder API routes only inside the same Playwright browser context. Never ask for or store ChatGPT passwords, cookies, browser session data, or API keys.
 
-`setup` 已经会打开 Builder、等待登录、尝试自动配置 Action/鉴权/保存，并在可行时运行冒烟测试。使用 `chatgpt-codex builder sniff` 只在同一个 Playwright 浏览器会话中发现内部 Builder API 路由。Computer Use 仅作为兜底。不要索要或保存 ChatGPT 密码、cookie、浏览器会话数据或 API key。
+`setup` 已经会打开 Builder、等待登录、尝试自动配置 Action/鉴权/保存、自动重试不可达的临时隧道地址，并在可行时运行冒烟测试。如果返回 `builder_fallback_required`，按输出的 Chrome/Computer Use 交接继续；顶层 setup 会保持本地桥和公网入口存活。使用 `chatgpt-codex builder sniff` 只在同一个 Playwright 浏览器会话中发现内部 Builder API 路由。不要索要或保存 ChatGPT 密码、cookie、浏览器会话数据或 API key。
 
 ## Verify / 验证
 

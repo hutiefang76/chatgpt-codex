@@ -79,7 +79,7 @@ chatgpt-codex setup --workspace "C:\absolute\path\to\your\project"
 
 If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process Bypass -Force` in that terminal and retry activation.
 
-The `setup` command prepares the local bridge, starts or uses a public HTTPS route, verifies the Action API, opens ChatGPT Builder, waits for the human ChatGPT login, captures the saved GPT URL, and runs `builder smoke` when possible. The bridge then stays running until `Ctrl-C`.
+The `setup` command prepares the local bridge, starts or uses a public HTTPS route, verifies the Action API, opens ChatGPT Builder, waits for the human ChatGPT login, captures the saved GPT URL, and runs `builder smoke` when possible. Temporary quick-tunnel URLs are retried automatically when the first URL is not reachable. The bridge then stays running until `Ctrl-C`.
 
 For a dry run that prints the plan without touching browsers or starting tunnels:
 
@@ -114,6 +114,7 @@ chatgpt-codex --lang en status
 chatgpt-codex ai-commands
 chatgpt-codex chatgpt-preflight
 chatgpt-codex setup --workspace /absolute/path/to/project --dry-run
+chatgpt-codex setup --workspace /absolute/path/to/project --builder-fallback auto --builder-challenge-grace-seconds 45
 chatgpt-codex setup-smoke
 chatgpt-codex api-smoke
 chatgpt-codex channel status
@@ -155,7 +156,7 @@ chatgpt-codex builder smoke
 
 `builder setup` opens ChatGPT Builder in the persistent Playwright profile, waits while the user completes login or a browser challenge, fills stable Builder fields, attempts Action/auth/save automation, waits for a saved `https://chatgpt.com/g/...` URL, and stores it in `.chatgpt-codex/builder.json`.
 
-If `builder doctor`, `builder setup`, or `builder configure` reports `blockedByChallenge` / `blocked_by_challenge`, complete the ChatGPT or Cloudflare challenge in that Playwright browser and rerun the command. If the challenge persists, use Computer Use or the existing-Chrome fallback for the Builder UI.
+If `builder setup` stays on a ChatGPT or Cloudflare challenge page past the challenge grace window, it returns `stage: "builder_fallback_required"` with a machine-readable Chrome/Computer Use handoff. In top-level `setup`, the local bridge and public route stay running so an AI agent can continue in the user's normal browser without losing the saved URL or token. Disable this with `--fallback none` only when you want the command to wait until its normal timeout.
 
 `builder smoke` opens the saved GPT, submits a `workspace_status` smoke prompt, and exits non-zero unless a workspace-status result appears on the page. `builder configure --mode hybrid` also captures redacted Builder network traffic. `builder sniff` is the explicit internal API discovery flow: perform one Builder save/configure action in the opened browser, press `Ctrl-C`, and the redacted route map is saved to `.chatgpt-codex/builder-routes.json`.
 
@@ -221,7 +222,8 @@ Inside GPT chat, ask the GPT to call `workspace_status`, `list_workspaces`, and 
 3. Run `chatgpt-codex setup --workspace <path>`.
 4. Complete ChatGPT login in the opened Playwright browser.
 5. Let setup verify the bridge, configure Builder, capture the saved GPT URL, and run `builder smoke`.
-6. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
+6. If Playwright returns `builder_fallback_required`, let the agent use Chrome/Computer Use with the printed handoff while setup keeps the bridge alive.
+7. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
 
 ## Lower-Level Commands
 

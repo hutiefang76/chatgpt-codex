@@ -86,9 +86,12 @@ def main(argv=None) -> int:
     setup_parser.add_argument("--host", default="127.0.0.1")
     setup_parser.add_argument("--port", type=int, default=8766)
     setup_parser.add_argument("--timeout", type=int, default=10, help="Local verify request timeout seconds. / 本地验证请求超时秒数。")
+    setup_parser.add_argument("--route-attempts", type=int, default=3, help="Quick-tunnel URL attempts before failing. / 临时隧道地址失败前的尝试次数。")
     setup_parser.add_argument("--builder-mode", choices=["ui", "hybrid", "api"], default="ui")
     setup_parser.add_argument("--visibility", choices=["private", "link", "store"], default="private")
     setup_parser.add_argument("--builder-wait-seconds", type=int, default=600, help="How long to wait for ChatGPT login/Builder save. / 等待 ChatGPT 登录和 Builder 保存的秒数。")
+    setup_parser.add_argument("--builder-fallback", choices=["auto", "none"], default="auto", help="When Playwright is blocked, return an agent handoff instead of waiting forever. / Playwright 被阻塞时返回 agent 接管说明，而不是一直等待。")
+    setup_parser.add_argument("--builder-challenge-grace-seconds", type=int, default=45, help="How long a ChatGPT challenge may persist before fallback. / ChatGPT 验证页持续多久后进入兜底。")
     setup_parser.add_argument("--smoke-wait-seconds", type=int, default=90, help="How long to wait for the GPT Action smoke response. / 等待 GPT Action 冒烟响应的秒数。")
     setup_parser.add_argument("--skip-builder", action="store_true", help="Prepare the bridge only; do not open ChatGPT Builder. / 只准备桥，不打开 ChatGPT Builder。")
     setup_parser.add_argument("--skip-smoke", action="store_true", help="Skip the saved GPT Action smoke test. / 跳过已保存 GPT Action 冒烟测试。")
@@ -127,6 +130,8 @@ def main(argv=None) -> int:
     builder_setup.add_argument("--mode", choices=["ui", "hybrid", "api"], default="ui")
     builder_setup.add_argument("--visibility", choices=["private", "link", "store"], default="private")
     builder_setup.add_argument("--wait-seconds", type=int, default=600, help="How long to wait for login and saved GPT URL. / 等待登录和已保存 GPT 地址的秒数。")
+    builder_setup.add_argument("--fallback", choices=["auto", "none"], default="auto", help="Return an agent handoff when Playwright is blocked. / Playwright 被阻塞时返回 agent 接管说明。")
+    builder_setup.add_argument("--challenge-grace-seconds", type=int, default=45, help="Challenge persistence seconds before fallback. / 进入兜底前允许验证页持续的秒数。")
     builder_setup.add_argument("--dry-run", action="store_true")
     builder_smoke = builder_subcommands.add_parser("smoke", help="Run a real GPT Action smoke test through ChatGPT. / 通过 ChatGPT 运行真实 GPT Action 冒烟测试。")
     builder_smoke.add_argument("--wait-seconds", type=int, default=90, help="How long to wait for the GPT Action response. / 等待 GPT Action 响应的秒数。")
@@ -526,6 +531,7 @@ def _ai_command_catalog() -> dict:
             "chatgpt-codex builder open-login",
             "chatgpt-codex builder doctor",
             "chatgpt-codex builder setup",
+            "chatgpt-codex builder setup --fallback auto --challenge-grace-seconds 45",
             "chatgpt-codex builder sniff",
             "chatgpt-codex builder configure --mode ui",
             "chatgpt-codex builder configure --mode hybrid",
@@ -763,6 +769,9 @@ def _builder_playwright_payload(args, cfg_path: Path) -> dict:
         command.extend(["--mode", args.mode, "--visibility", args.visibility])
     if args.builder_command in {"configure", "setup", "smoke"} and hasattr(args, "wait_seconds"):
         command.extend(["--wait-seconds", str(args.wait_seconds)])
+    if args.builder_command == "setup":
+        command.extend(["--fallback", getattr(args, "fallback", "auto")])
+        command.extend(["--challenge-grace-seconds", str(getattr(args, "challenge_grace_seconds", 45))])
     return {
         "command": command,
         "profile_path": str(playwright_profile_dir()),
@@ -1038,10 +1047,10 @@ def _setup_smoke(timeout: int) -> dict:
         checks.append(_setup_check("builder_configure_dry_run", _builder_command_has(configure_payload, ["configure", "--wait-seconds", "5"]), configure_payload))
 
         setup_payload = _builder_playwright_payload(
-            argparse.Namespace(builder_command="setup", mode="ui", visibility="private", wait_seconds=6, output=""),
+            argparse.Namespace(builder_command="setup", mode="ui", visibility="private", wait_seconds=6, fallback="auto", challenge_grace_seconds=4, output=""),
             config_file,
         )
-        checks.append(_setup_check("builder_setup_dry_run", _builder_command_has(setup_payload, ["setup", "--wait-seconds", "6"]), setup_payload))
+        checks.append(_setup_check("builder_setup_dry_run", _builder_command_has(setup_payload, ["setup", "--wait-seconds", "6", "--fallback", "--challenge-grace-seconds"]), setup_payload))
 
         smoke_payload = _builder_playwright_payload(
             argparse.Namespace(builder_command="smoke", wait_seconds=7, output=""),
@@ -1110,10 +1119,13 @@ def _setup_plan(args, cfg_path: Path) -> dict:
         "public_base_url": args.public_base_url.rstrip("/") if args.public_base_url else "",
         "route": "quick-tunnel" if uses_tunnel else ("provided-public-url" if args.public_base_url else "local-only"),
         "cloudflared": args.cloudflared,
+        "route_attempts": max(1, int(getattr(args, "route_attempts", 3) or 1)) if uses_tunnel else 1,
         "builder_command": "chatgpt-codex builder setup",
         "builder_mode": args.builder_mode,
         "visibility": args.visibility,
         "builder_wait_seconds": args.builder_wait_seconds,
+        "builder_fallback": getattr(args, "builder_fallback", "auto"),
+        "builder_challenge_grace_seconds": getattr(args, "builder_challenge_grace_seconds", 45),
         "smoke_wait_seconds": args.smoke_wait_seconds,
         "steps": [
             "prepare_local_bridge",
@@ -1130,7 +1142,7 @@ def _setup_plan(args, cfg_path: Path) -> dict:
         "human_required": ["ChatGPT login in the opened browser"],
         "notes": [
             "ChatGPT has no public GPT Builder creation API; the command uses Playwright in a persistent profile.",
-            "If ChatGPT or Cloudflare blocks automation, the command returns a machine-readable blocked_by_challenge result.",
+            "If ChatGPT or Cloudflare blocks Playwright, auto fallback returns a machine-readable agent handoff for Chrome/Computer Use.",
             "Without --public-base-url, setup needs cloudflared in PATH to expose ChatGPT-reachable HTTPS.",
         ],
     }
@@ -1167,15 +1179,45 @@ def _setup(args, cfg_path: Path) -> int:
             ensure_ascii=False,
         ))
 
-        public_url, tunnel_proc, tunnel_thread = _setup_public_route(args, config, cfg_path, server.server_port)
-        if not public_url:
-            return 1
-        reachable = _wait_health(public_url, args.timeout)
-        if not reachable:
+        public_url = ""
+        reachable = False
+        use_quick_tunnel = not args.public_base_url and not args.no_tunnel
+        route_attempts = max(1, int(getattr(args, "route_attempts", 3) or 1)) if use_quick_tunnel else 1
+        for route_attempt in range(1, route_attempts + 1):
+            public_url, tunnel_proc, tunnel_thread = _setup_public_route(args, config, cfg_path, server.server_port)
+            if not public_url:
+                return 1
+            reachable = _wait_health(public_url, args.timeout)
+            if reachable:
+                break
+            if route_attempt < route_attempts:
+                print(json.dumps(
+                    {
+                        "stage": "bridge_wait_retrying",
+                        "ok": False,
+                        "attempt": route_attempt,
+                        "max_attempts": route_attempts,
+                        "public_base_url": public_url,
+                        "openapi_url": f"{public_url.rstrip('/')}/openapi.json",
+                        "message": "The quick-tunnel URL is not reachable yet; starting a fresh tunnel URL.",
+                        "cn_message": "当前临时隧道地址暂不可达，正在换一个新的隧道地址。",
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ))
+                if tunnel_proc is not None:
+                    _terminate(tunnel_proc)
+                    tunnel_proc = None
+                if tunnel_thread is not None:
+                    tunnel_thread.join(timeout=5)
+                    tunnel_thread = None
+                continue
             print(json.dumps(
                 {
                     "stage": "bridge_wait_failed",
                     "ok": False,
+                    "attempt": route_attempt,
+                    "max_attempts": route_attempts,
                     "public_base_url": public_url,
                     "openapi_url": f"{public_url.rstrip('/')}/openapi.json",
                     "message": "The public route was created but did not become reachable before timeout.",
@@ -1218,14 +1260,36 @@ def _setup(args, cfg_path: Path) -> int:
             thread.join()
             return 0
 
-        builder_code = _run_builder_runtime(
+        builder_result = _run_builder_runtime_result(
             cfg_path,
             "setup",
             mode=args.builder_mode,
             visibility=args.visibility,
             wait_seconds=args.builder_wait_seconds,
+            fallback=getattr(args, "builder_fallback", "auto"),
+            challenge_grace_seconds=getattr(args, "builder_challenge_grace_seconds", 45),
         )
+        builder_code = builder_result["exit_code"]
         if builder_code != 0:
+            payload = builder_result.get("payload") or {}
+            if payload.get("fallback_required"):
+                print(json.dumps(
+                    {
+                        "stage": "setup_agent_fallback_ready",
+                        "ok": False,
+                        "bridge_running": True,
+                        "public_base_url": config.public_base_url.rstrip("/"),
+                        "openapi_url": f"{config.public_base_url.rstrip('/')}/openapi.json",
+                        "active_workspace": config.active_workspace,
+                        "workspace": str(config.workspace),
+                        "fallback": payload.get("fallback", {}),
+                        "message": "Builder automation needs Chrome/Computer Use fallback; the bridge stays running until Ctrl-C.",
+                        "cn_message": "Builder 自动化需要 Chrome/Computer Use 兜底；本地桥会继续运行直到 Ctrl-C。",
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ))
+                thread.join()
             return builder_code
 
         if not args.skip_smoke:
@@ -1335,17 +1399,106 @@ def _start_cloudflared_quick_tunnel(cloudflared: str, local_url: str, config: Ap
     return proc, pump_thread, captured["url"]
 
 
-def _run_builder_runtime(cfg_path: Path, builder_command: str, mode: str = "ui", visibility: str = "private", wait_seconds: int = 600) -> int:
+def _run_builder_runtime_result(
+    cfg_path: Path,
+    builder_command: str,
+    mode: str = "ui",
+    visibility: str = "private",
+    wait_seconds: int = 600,
+    fallback: str = "auto",
+    challenge_grace_seconds: int = 45,
+) -> dict:
     args = argparse.Namespace(
         builder_command=builder_command,
         mode=mode,
         visibility=visibility,
         wait_seconds=wait_seconds,
+        fallback=fallback,
+        challenge_grace_seconds=challenge_grace_seconds,
         output="",
         dry_run=False,
     )
-    config = load_config(cfg_path)
-    return _builder_command(args, config, cfg_path)
+    command_payload = _builder_playwright_payload(args, cfg_path)
+    if not _playwright_browser_cache_exists():
+        install_code = subprocess.call(_builder_playwright_install_command())
+        if install_code != 0:
+            return {"exit_code": install_code, "payload": {}}
+    proc = subprocess.Popen(
+        command_payload["command"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    stdout_chunks = []
+
+    def pump_stdout() -> None:
+        if proc.stdout is None:
+            return
+        for line in proc.stdout:
+            stdout_chunks.append(line)
+            sys.stdout.write(line)
+            sys.stdout.flush()
+
+    def pump_stderr() -> None:
+        if proc.stderr is None:
+            return
+        for line in proc.stderr:
+            sys.stderr.write(line)
+            sys.stderr.flush()
+
+    stdout_thread = threading.Thread(target=pump_stdout, daemon=True)
+    stderr_thread = threading.Thread(target=pump_stderr, daemon=True)
+    stdout_thread.start()
+    stderr_thread.start()
+    exit_code = proc.wait()
+    stdout_thread.join(timeout=5)
+    stderr_thread.join(timeout=5)
+    stdout = "".join(stdout_chunks)
+    return {
+        "exit_code": exit_code,
+        "payload": _json_payload_from_stdout(stdout),
+    }
+
+
+def _json_payload_from_stdout(stdout: str) -> dict:
+    text = (stdout or "").strip()
+    if not text:
+        return {}
+    try:
+        payload = json.loads(text)
+        return payload if isinstance(payload, dict) else {}
+    except ValueError:
+        pass
+    for index, character in enumerate(text):
+        if character != "{":
+            continue
+        try:
+            payload = json.loads(text[index:])
+            return payload if isinstance(payload, dict) else {}
+        except ValueError:
+            continue
+    return {}
+
+
+def _run_builder_runtime(
+    cfg_path: Path,
+    builder_command: str,
+    mode: str = "ui",
+    visibility: str = "private",
+    wait_seconds: int = 600,
+    fallback: str = "auto",
+    challenge_grace_seconds: int = 45,
+) -> int:
+    return _run_builder_runtime_result(
+        cfg_path,
+        builder_command,
+        mode=mode,
+        visibility=visibility,
+        wait_seconds=wait_seconds,
+        fallback=fallback,
+        challenge_grace_seconds=challenge_grace_seconds,
+    )["exit_code"]
 
 
 def _api_get(url: str, timeout: int) -> dict:

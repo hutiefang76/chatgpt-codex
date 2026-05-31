@@ -256,6 +256,8 @@ class CliTests(unittest.TestCase):
                         str(workspace),
                         "--builder-wait-seconds",
                         "12",
+                        "--builder-challenge-grace-seconds",
+                        "3",
                         "--dry-run",
                     ]
                 )
@@ -265,6 +267,8 @@ class CliTests(unittest.TestCase):
             self.assertEqual(plan["command"], "setup")
             self.assertEqual(plan["workspace"], str(workspace.resolve()))
             self.assertEqual(plan["builder_command"], "chatgpt-codex builder setup")
+            self.assertEqual(plan["builder_fallback"], "auto")
+            self.assertEqual(plan["builder_challenge_grace_seconds"], 3)
             self.assertIn("prepare_local_bridge", plan["steps"])
             self.assertIn("open_chatgpt_builder", plan["steps"])
             self.assertIn("smoke_test_saved_gpt", plan["steps"])
@@ -289,10 +293,13 @@ class CliTests(unittest.TestCase):
                     "no_tunnel": False,
                     "cloudflared": "cloudflared",
                     "timeout": 10,
+                    "route_attempts": 1,
                     "skip_builder": False,
                     "builder_mode": "ui",
                     "visibility": "private",
                     "builder_wait_seconds": 1,
+                    "builder_fallback": "auto",
+                    "builder_challenge_grace_seconds": 2,
                     "skip_smoke": False,
                     "smoke_wait_seconds": 1,
                     "force": False,
@@ -329,6 +336,157 @@ class CliTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             self.assertIn("wait_health", calls)
             self.assertNotIn("verify_actions", calls)
+
+    def test_setup_retries_quick_tunnel_when_first_public_route_is_unreachable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            args = type(
+                "Args",
+                (),
+                {
+                    "dry_run": False,
+                    "run_setup_smoke": False,
+                    "workspace": str(workspace),
+                    "workspace_name": "demo",
+                    "host": "127.0.0.1",
+                    "port": 0,
+                    "public_base_url": "",
+                    "no_tunnel": False,
+                    "cloudflared": "cloudflared",
+                    "timeout": 10,
+                    "route_attempts": 2,
+                    "skip_builder": True,
+                    "builder_mode": "ui",
+                    "visibility": "private",
+                    "builder_wait_seconds": 1,
+                    "builder_fallback": "auto",
+                    "builder_challenge_grace_seconds": 2,
+                    "skip_smoke": True,
+                    "smoke_wait_seconds": 1,
+                    "force": False,
+                },
+            )()
+            calls = []
+
+            class FakeServer:
+                server_port = 8767
+
+                def serve_forever(self):
+                    return None
+
+                def shutdown(self):
+                    calls.append("shutdown")
+
+                def server_close(self):
+                    calls.append("server_close")
+
+            class FakeThread:
+                def join(self, timeout=None):
+                    calls.append(f"join:{timeout}")
+
+            class FakeProc:
+                pass
+
+            def fake_setup_public_route(*_):
+                attempt = len([item for item in calls if item == "setup_public_route"]) + 1
+                calls.append("setup_public_route")
+                return f"https://actions-{attempt}.example.com", FakeProc(), FakeThread()
+
+            def fake_wait_health(url, *_):
+                calls.append(f"wait_health:{url}")
+                return url == "https://actions-2.example.com"
+
+            def fake_verify(*_):
+                calls.append("verify_actions")
+                return {"ok": True, "checks": []}
+
+            with mock.patch("chatgpt_codex.cli.create_server", return_value=FakeServer()):
+                with mock.patch("chatgpt_codex.cli._setup_public_route", side_effect=fake_setup_public_route):
+                    with mock.patch("chatgpt_codex.cli._wait_health", side_effect=fake_wait_health):
+                        with mock.patch("chatgpt_codex.cli._verify_actions", side_effect=fake_verify):
+                            with mock.patch("chatgpt_codex.cli._terminate", side_effect=lambda _proc: calls.append("terminate")):
+                                exit_code = cli._setup(args, config_path)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(calls.count("setup_public_route"), 2)
+            self.assertIn("wait_health:https://actions-1.example.com", calls)
+            self.assertIn("wait_health:https://actions-2.example.com", calls)
+            self.assertIn("terminate", calls)
+            self.assertIn("verify_actions", calls)
+
+    def test_setup_keeps_bridge_running_when_builder_returns_agent_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            args = type(
+                "Args",
+                (),
+                {
+                    "dry_run": False,
+                    "run_setup_smoke": False,
+                    "workspace": str(workspace),
+                    "workspace_name": "demo",
+                    "host": "127.0.0.1",
+                    "port": 0,
+                    "public_base_url": "https://actions.example.com",
+                    "no_tunnel": False,
+                    "cloudflared": "cloudflared",
+                    "timeout": 10,
+                    "route_attempts": 1,
+                    "skip_builder": False,
+                    "builder_mode": "ui",
+                    "visibility": "private",
+                    "builder_wait_seconds": 1,
+                    "builder_fallback": "auto",
+                    "builder_challenge_grace_seconds": 2,
+                    "skip_smoke": False,
+                    "smoke_wait_seconds": 1,
+                    "force": False,
+                },
+            )()
+            calls = []
+
+            class FakeServer:
+                server_port = 8767
+
+                def serve_forever(self):
+                    calls.append("serve_forever")
+
+                def shutdown(self):
+                    calls.append("shutdown")
+
+                def server_close(self):
+                    calls.append("server_close")
+
+            class FakeThread:
+                def __init__(self, *_, **__):
+                    pass
+
+                def start(self):
+                    calls.append("thread_start")
+
+                def join(self, timeout=None):
+                    calls.append(f"thread_join:{timeout}")
+
+            fallback_payload = {
+                "fallback_required": True,
+                "fallback": {"kind": "chrome_or_computer_use"},
+            }
+
+            with mock.patch("chatgpt_codex.cli.create_server", return_value=FakeServer()):
+                with mock.patch("chatgpt_codex.cli.threading.Thread", FakeThread):
+                    with mock.patch("chatgpt_codex.cli._wait_health", return_value=True):
+                        with mock.patch("chatgpt_codex.cli._verify_actions", return_value={"ok": True, "checks": []}):
+                            with mock.patch("chatgpt_codex.cli._run_builder_runtime_result", return_value={"exit_code": 1, "payload": fallback_payload}):
+                                with mock.patch("chatgpt_codex.cli._run_builder_runtime", side_effect=AssertionError("smoke must not run before fallback finishes")):
+                                    exit_code = cli._setup(args, config_path)
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("thread_join:None", calls)
+            self.assertIn("shutdown", calls)
 
     def test_setup_smoke_runs_deterministic_local_acceptance(self):
         stdout = io.StringIO()
@@ -408,6 +566,37 @@ class CliTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertIn("--wait-seconds", command)
             self.assertEqual(command[command.index("--wait-seconds") + 1], "7")
+
+    def test_builder_setup_dry_run_passes_fallback_controls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            run_quietly(["--config", str(config_path), "init", "--workspace", str(workspace)])
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "builder",
+                        "setup",
+                        "--fallback",
+                        "auto",
+                        "--challenge-grace-seconds",
+                        "4",
+                        "--dry-run",
+                    ]
+                )
+
+            payload = json.loads(stdout.getvalue())
+            command = payload["command"]
+            self.assertEqual(exit_code, 0)
+            self.assertIn("--fallback", command)
+            self.assertEqual(command[command.index("--fallback") + 1], "auto")
+            self.assertIn("--challenge-grace-seconds", command)
+            self.assertEqual(command[command.index("--challenge-grace-seconds") + 1], "4")
 
     def test_doctor_without_config_prints_next_step_instead_of_traceback(self):
         with tempfile.TemporaryDirectory() as tmp:
