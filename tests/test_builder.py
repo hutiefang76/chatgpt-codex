@@ -150,6 +150,7 @@ class BuilderAutomationTests(unittest.TestCase):
             for command in [
                 ["builder", "sniff", "--dry-run"],
                 ["builder", "configure", "--mode", "hybrid", "--dry-run"],
+                ["builder", "setup", "--mode", "hybrid", "--wait-seconds", "7", "--dry-run"],
                 ["builder", "smoke", "--dry-run"],
             ]:
                 stdout = io.StringIO()
@@ -162,6 +163,45 @@ class BuilderAutomationTests(unittest.TestCase):
                     self.assertIn("scripts/chatgpt_builder_playwright.mjs", " ".join(payload["command"]))
                     self.assertIn("--config", payload["command"])
                     self.assertNotIn(token, stdout.getvalue())
+
+                    if command[1] == "setup":
+                        self.assertIn("setup", payload["command"])
+                        self.assertIn("--mode", payload["command"])
+                        self.assertEqual(payload["command"][payload["command"].index("--mode") + 1], "hybrid")
+                        self.assertIn("--wait-seconds", payload["command"])
+                        self.assertEqual(payload["command"][payload["command"].index("--wait-seconds") + 1], "7")
+
+    def test_builder_runtime_commands_install_playwright_browser_before_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            run_quietly(["--config", str(config_path), "init", "--workspace", str(workspace)])
+
+            with mock.patch("chatgpt_codex.cli._playwright_browser_cache_exists", return_value=False):
+                with mock.patch("chatgpt_codex.cli.subprocess.call", side_effect=[0, 0]) as calls:
+                    exit_code = main(["--config", str(config_path), "builder", "doctor"])
+
+            self.assertEqual(exit_code, 0)
+            install_command = calls.call_args_list[0].args[0]
+            runtime_command = calls.call_args_list[1].args[0]
+            self.assertEqual(install_command[-3:], ["playwright", "install", "chromium"])
+            self.assertIn("chatgpt_builder_playwright.mjs", " ".join(runtime_command))
+
+    def test_builder_runtime_skips_browser_install_when_cache_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            run_quietly(["--config", str(config_path), "init", "--workspace", str(workspace)])
+
+            with mock.patch("chatgpt_codex.cli._playwright_browser_cache_exists", return_value=True):
+                with mock.patch("chatgpt_codex.cli.subprocess.call", return_value=0) as call:
+                    exit_code = main(["--config", str(config_path), "builder", "doctor"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(call.call_args_list), 1)
+            self.assertIn("chatgpt_builder_playwright.mjs", " ".join(call.call_args.args[0]))
 
 
 if __name__ == "__main__":

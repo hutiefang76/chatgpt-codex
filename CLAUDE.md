@@ -8,7 +8,7 @@ This repo has two distinct audiences — know which one you are in.
 
 本仓库面向两类不同的使用者，先分清你在哪一类。
 
-- **Operating the bridge as a product** (the common case): follow [skills/chatgpt-codex/SKILL.md](./skills/chatgpt-codex/SKILL.md), then [AGENTS.md](./AGENTS.md). That path collects the minimal human inputs — human login to ChatGPT in the Playwright persistent profile, a workspace path, optional Cloudflare browser login, optional Cloudflare-managed domain, and one local authorization — then detects the OS, picks a route (a temporary HTTPS tunnel by default, or `chatgpt-codex.<domain>` when a Cloudflare login and domain exist), starts the server, verifies it, and fills the ChatGPT Builder. Prefer the CLI (`chatgpt-codex channel register|status|serve|api-smoke`, `chatgpt-codex builder ...`) over ad-hoc steps.
+- **Operating the bridge as a product** (the common case): follow [skills/chatgpt-codex/SKILL.md](./skills/chatgpt-codex/SKILL.md), then [AGENTS.md](./AGENTS.md). That path collects the minimal human inputs — human login to ChatGPT in the Playwright persistent profile, a workspace path, optional Cloudflare browser login, optional Cloudflare-managed domain, and one local authorization — then detects the OS, picks a route (a temporary HTTPS tunnel by default, or `chatgpt-codex.<domain>` when a Cloudflare login and domain exist), starts the server, verifies it, opens Builder, waits for login, attempts Action/auth/save automation, captures the saved GPT URL, and runs the smoke test when possible. Prefer `chatgpt-codex setup --workspace <path>` over piecing together low-level commands.
 - **作为产品来运行这座桥**（常见情况）：先看 SKILL.md，再看 AGENTS.md。
 - **Developing this codebase** (everything below): build, test, and architecture guidance.
 - **开发这套代码**（以下全部内容）：构建、测试与架构说明。
@@ -29,6 +29,10 @@ python3 -m chatgpt_codex --help
 # Interface-level smoke test: spins a server on a throwaway workspace and exercises
 # every Action plus the safety blocks (auth, path escape, dangerous command, expiry)
 python3 scripts/api-smoke.py                      # or: chatgpt-codex api-smoke
+
+# Setup acceptance test: local server, Action smoke path, bootstrap rebinding,
+# Builder dry-runs, and Node Builder bridge self-test in temporary workspaces
+python3 scripts/setup-smoke.py                    # or: chatgpt-codex setup-smoke
 
 # Install: creates .venv + a `chatgpt-codex` wrapper. There are NO third-party deps to install.
 ./scripts/install.sh && . .venv/bin/activate      # Windows: scripts/install.ps1
@@ -57,7 +61,7 @@ Cross-cutting facts that aren't obvious from any single file:
 
 1. **The config file is the live source of truth.** `server.py` re-reads `.chatgpt-codex/config.json` under a lock before every action (`reload_config_locked`). So `rotate-token`, `channel revoke/renew`, and `workspace switch` all take effect on an already-running `serve` process with no restart.
 2. **Adding or changing an Action touches three places in lockstep:** the route + dispatch in `server.py`, the path + schemas in `openapi.py` (its operationIds are what ChatGPT calls), and the implementing method in `workspace.py` / `executor.py` / `config.py`. `_api_smoke` in `cli.py` exercises the whole set end to end — run `chatgpt-codex api-smoke` after any Action change.
-3. **All local state and secrets live in `.chatgpt-codex/`** (gitignored, chmod 600 on macOS/Linux): `config.json` holds the bearer token, alongside `permissions.json`, `builder-routes.json`, and `builder.json`. Never print the bearer token or commit this directory; `status` / `channel status` deliberately report `token_configured` but never the token itself.
+3. **All local state and secrets live in `.chatgpt-codex/`** (gitignored, chmod 600 on macOS/Linux): `config.json` holds the bearer token, alongside `permissions.json`, `builder-routes.json`, and `builder.json`. Do not print the bearer token except in explicit handoff commands such as `token`, `channel register`, `channel renew`, or `bootstrap`; `status` / `channel status` deliberately report `token_configured` but never the token itself.
 4. **Security is centralized in `security.py`** and enforced at every entry: bearer auth (server), path sandbox (every file/command op), command deny-list (executor), access TTL (config), and workspace switching restricted to pre-registered names — ChatGPT can never reach an arbitrary path.
 5. **Builder automation is a Python→Node bridge.** `chatgpt-codex builder <cmd>` shells out via `npx --yes --package playwright node scripts/chatgpt_builder_playwright.mjs ...` using a dedicated persistent profile. Node/npx are required only for this; the server itself needs neither. Append `--dry-run` to any builder subcommand to print the command instead of running it.
 

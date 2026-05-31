@@ -9,12 +9,27 @@ const CHATGPT_HOME = "https://chatgpt.com/";
 const BUILDER_URL = "https://chatgpt.com/gpts/editor";
 const GPT_URL_PREFIX = "https://chatgpt.com/g/";
 const require = createRequire(import.meta.url);
+const SMOKE_PROMPT = [
+  "Call the workspace_status Action now.",
+  "Reply with the current workspace name and absolute local directory.",
+  "Do not modify files or run shell commands.",
+].join(" ");
 
 // A saved GPT exposes a chat URL like https://chatgpt.com/g/g-XXXX-name.
 // This is the single source of truth for "the GPT was saved", used by both the
 // configure capture loop and the smoke target resolver.
 function isSavedGptUrl(url) {
   return typeof url === "string" && url.startsWith(GPT_URL_PREFIX);
+}
+
+function isSmokeSuccessful(text, previousText = "") {
+  const fullText = String(text || "");
+  const newText = previousText && fullText.includes(previousText)
+    ? fullText.slice(fullText.indexOf(previousText) + previousText.length)
+    : fullText;
+  const hasWorkspaceSignal = /active[_\s-]?workspace|current workspace|当前工作区|workspace["'\s:]/i.test(newText);
+  const hasLocalPath = /\/(?:Users|home|tmp|var|Volumes|[A-Za-z0-9._ -]+\/)|[A-Za-z]:\\/i.test(newText);
+  return hasWorkspaceSignal && hasLocalPath;
 }
 
 function parseArgs(argv) {
@@ -182,22 +197,50 @@ function startSniffer(context, captures) {
 async function launch(profile) {
   await fs.mkdir(profile, { recursive: true });
   const { chromium } = await loadPlaywright();
-  return chromium.launchPersistentContext(profile, {
+  if (!chromium || typeof chromium.launchPersistentContext !== "function") {
+    throw new Error("Playwright chromium launcher was not found");
+  }
+  const baseOptions = {
     headless: false,
     viewport: { width: 1440, height: 1000 },
-  });
+  };
+  const requestedChannel = String(process.env.CHATGPT_CODEX_PLAYWRIGHT_CHANNEL || "").trim();
+  const channelOptions = [];
+  if (requestedChannel) {
+    channelOptions.push({ ...baseOptions, channel: requestedChannel });
+  } else {
+    channelOptions.push({ ...baseOptions, channel: "chrome" });
+    channelOptions.push(baseOptions);
+  }
+  let lastError;
+  for (const options of channelOptions) {
+    try {
+      return await chromium.launchPersistentContext(profile, options);
+    } catch (error) {
+      lastError = error;
+      if (requestedChannel) break;
+      if (!/chrome|executable|browser/i.test(String(error && error.message ? error.message : error))) break;
+    }
+  }
+  throw lastError;
+}
+
+function normalizePlaywright(module) {
+  if (module && module.chromium) return module;
+  if (module && module.default && module.default.chromium) return module.default;
+  return module;
 }
 
 async function loadPlaywright() {
   try {
-    return await import("playwright");
+    return normalizePlaywright(await import("playwright"));
   } catch (firstError) {
     for (const binDir of String(process.env.PATH || "").split(path.delimiter)) {
       if (!binDir.endsWith(path.join("node_modules", ".bin"))) continue;
       const nodeModules = path.dirname(binDir);
       try {
         const resolved = require.resolve("playwright", { paths: [nodeModules] });
-        return await import(pathToFileURL(resolved).href);
+        return normalizePlaywright(await import(pathToFileURL(resolved).href));
       } catch {
         // Try the next PATH entry.
       }
@@ -206,15 +249,23 @@ async function loadPlaywright() {
   }
 }
 
+function classifyBuilderState(url, title, bodyText, hasTurnstile) {
+  const haystack = `${url || ""}\n${title || ""}\n${bodyText || ""}`;
+  const blockedByChallenge = Boolean(hasTurnstile) || /just a moment|请稍候|checking your browser|cloudflare|turnstile/i.test(haystack);
+  const loggedIn = !blockedByChallenge && !/login|auth\/login|log in|sign up/i.test(haystack);
+  const hasEditor = !blockedByChallenge && /gpts\/editor|builder|configure|配置|添加操作|actions?/i.test(haystack);
+  const hasActions = !blockedByChallenge && /actions?|操作|schema|openapi|authentication|鉴权|api key/i.test(bodyText || "");
+  return { loggedIn, hasEditor, hasActions, blockedByChallenge };
+}
+
 async function detectBuilder(page) {
   await page.goto(BUILDER_URL, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
   const url = page.url();
+  const title = await page.title().catch(() => "");
   const bodyText = await page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
-  const loggedIn = !/login|auth\/login|log in|sign up/i.test(url + "\n" + bodyText);
-  const hasEditor = /gpts\/editor|builder|configure|配置|添加操作|actions?/i.test(url + "\n" + bodyText);
-  const hasActions = /actions?|操作|schema|openapi|authentication|鉴权|api key/i.test(bodyText);
-  return { loggedIn, hasEditor, hasActions, url };
+  const hasTurnstile = Boolean(await page.locator('input[name="cf-turnstile-response"]').count().catch(() => 0));
+  return { ...classifyBuilderState(url, title, bodyText, hasTurnstile), url, title };
 }
 
 async function fillFirst(page, labels, value) {
@@ -232,15 +283,149 @@ async function fillFirst(page, labels, value) {
   return false;
 }
 
+function labelPattern(label) {
+  return new RegExp(String(label).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+}
+
+async function clickFirst(page, labels) {
+  for (const label of labels) {
+    const pattern = labelPattern(label);
+    const candidates = [
+      page.getByRole("button", { name: pattern }).first(),
+      page.getByRole("tab", { name: pattern }).first(),
+      page.getByText(pattern).first(),
+    ];
+    for (const locator of candidates) {
+      if (!(await locator.count().catch(() => 0))) continue;
+      try {
+        await locator.click({ timeout: 3000 });
+        await page.waitForTimeout(500);
+        return true;
+      } catch {
+        // Try the next locator shape.
+      }
+    }
+  }
+  return false;
+}
+
+async function fillFirstLoose(page, labels, value) {
+  for (const label of labels) {
+    const pattern = labelPattern(label);
+    const candidates = [
+      page.getByLabel(pattern).first(),
+      page.getByPlaceholder(pattern).first(),
+      page.getByRole("textbox", { name: pattern }).first(),
+    ];
+    for (const locator of candidates) {
+      if (!(await locator.count().catch(() => 0))) continue;
+      try {
+        await locator.fill(value, { timeout: 3000 });
+        return true;
+      } catch {
+        try {
+          await locator.click({ timeout: 3000 });
+          await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+          await page.keyboard.insertText(value);
+          return true;
+        } catch {
+          // Try the next locator shape.
+        }
+      }
+    }
+  }
+  return false;
+}
+
+async function fillLastTextarea(page, value) {
+  const locator = page.locator("textarea").last();
+  if (!(await locator.count().catch(() => 0))) return false;
+  try {
+    await locator.fill(value, { timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function loadSchemaText(context, schemaUrl) {
+  try {
+    const response = await context.request.get(schemaUrl, { failOnStatusCode: false });
+    if (response.status() >= 200 && response.status() < 300) {
+      return await response.text();
+    }
+  } catch {
+    // Keep UI automation best-effort.
+  }
+  return "";
+}
+
+async function attemptActionSetup(page, context, config, ui, visibility) {
+  const payload = builderPayload(config);
+  const actionAttempt = {
+    configure_tab: false,
+    actions_panel: Boolean(ui.found_actions_text),
+    create_action: false,
+    schema_url: false,
+    schema_textarea: false,
+    privacy_url: false,
+    auth_api_key: false,
+    auth_bearer: false,
+    auth_token: false,
+    save_clicked: false,
+  };
+
+  actionAttempt.configure_tab = await clickFirst(page, ["Configure", "配置"]) || actionAttempt.configure_tab;
+  actionAttempt.actions_panel = await clickFirst(page, ["Actions", "操作"]) || actionAttempt.actions_panel;
+  actionAttempt.create_action = await clickFirst(page, ["Create new action", "Add action", "Create action", "添加操作", "创建新操作"]);
+
+  actionAttempt.schema_url = await fillFirstLoose(page, ["Import from URL", "Schema URL", "OpenAPI URL", "URL"], payload.schemaUrl);
+  if (!actionAttempt.schema_url) {
+    const schemaText = await loadSchemaText(context, payload.schemaUrl);
+    if (schemaText) {
+      actionAttempt.schema_textarea = await fillFirstLoose(page, ["Schema", "OpenAPI schema", "OpenAPI"], schemaText)
+        || await fillLastTextarea(page, schemaText);
+    }
+  }
+  actionAttempt.privacy_url = await fillFirstLoose(page, ["Privacy policy", "Privacy URL", "Privacy policy URL", "隐私政策"], payload.privacyUrl);
+
+  await clickFirst(page, ["Authentication", "鉴权", "Auth"]);
+  actionAttempt.auth_api_key = await clickFirst(page, ["API Key", "API key", "API 密钥"]);
+  actionAttempt.auth_bearer = await clickFirst(page, ["Bearer"]);
+  actionAttempt.auth_token = await fillFirstLoose(page, ["API Key", "API key", "Bearer token", "Token", "密钥", "令牌"], config.token);
+
+  if (visibility === "private") {
+    await clickFirst(page, ["Only me", "私密", "仅自己"]);
+  }
+  actionAttempt.save_clicked = await clickFirst(page, ["Save", "Create", "Update", "保存", "创建", "更新"]);
+  return actionAttempt;
+}
+
 async function configureUi(page, config) {
   const payload = builderPayload(config);
   await page.goto(BUILDER_URL, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+  const status = {
+    ...classifyBuilderState(
+      page.url(),
+      await page.title().catch(() => ""),
+      await page.locator("body").innerText({ timeout: 10000 }).catch(() => ""),
+      Boolean(await page.locator('input[name="cf-turnstile-response"]').count().catch(() => 0)),
+    ),
+  };
+  if (status.blockedByChallenge) {
+    return {
+      prefilled: { name: false, description: false, instructions: false },
+      found_actions_text: false,
+      blocked_by_challenge: true,
+      schema_url: payload.schemaUrl,
+      privacy_url: payload.privacyUrl,
+      page_url: page.url(),
+    };
+  }
 
-  // Prefill only the plain text fields. Adding the Action, importing the schema,
-  // pasting the bearer token, and saving are intentionally left to the human:
-  // the Builder UI for those steps has no stable selectors, so we do not pretend
-  // to automate them.
+  // These labels are the most stable part of the Builder page. The top-level
+  // setup command adds a best-effort Action/auth/save pass after this.
   const prefilled = {
     name: await fillFirst(page, ["Name", "名称", "GPT name"], payload.name),
     description: await fillFirst(page, ["Description", "描述"], payload.description),
@@ -303,9 +488,12 @@ async function runDoctor(args) {
     ok: status.loggedIn && status.hasEditor,
     ...status,
     detection: "heuristic-text-scan",
-    note: "Login/editor/Actions detection is a heuristic page-text scan and can be wrong (the Actions panel may be hidden behind a Configure tab). The reliable confirmation is a successful `builder smoke`.",
+    note: status.blockedByChallenge
+      ? "A Cloudflare/ChatGPT challenge page is blocking the Playwright profile. Run `builder open-login`, complete the browser challenge/login manually, then rerun `builder doctor`; if it persists, use the Computer Use or Chrome fallback."
+      : "Login/editor/Actions detection is a heuristic page-text scan and can be wrong (the Actions panel may be hidden behind a Configure tab). The reliable confirmation is a successful `builder smoke`.",
     profile: args.profile,
   }, null, 2));
+  return status.loggedIn && status.hasEditor;
 }
 
 async function runSniff(args) {
@@ -379,6 +567,38 @@ async function runConfigure(args) {
     });
   } else {
     const ui = await configureUi(page, config);
+    if (ui.blocked_by_challenge) {
+      await writeJsonPrivate(args.state, {
+        schema_version: 1,
+        updated_at: new Date().toISOString(),
+        last_builder_url: page.url(),
+        mode: args.mode,
+        visibility: args.visibility,
+        blocked_by_challenge: true,
+      });
+      result = {
+        ok: false,
+        mode: args.mode,
+        saved: false,
+        gpt_url: "",
+        prefilled: ui.prefilled,
+        found_actions_text: false,
+        blocked_by_challenge: true,
+        schema_url: ui.schema_url,
+        privacy_url: ui.privacy_url,
+        manual_steps_required: [
+          "Run `chatgpt-codex builder open-login`.",
+          "Complete the Cloudflare/ChatGPT challenge and login in that Playwright browser.",
+          "Rerun `chatgpt-codex builder doctor`, then rerun `chatgpt-codex builder configure --mode ui`.",
+          "If the challenge persists, switch to the Computer Use or Chrome fallback for the Builder UI.",
+        ],
+        state_path: args.state,
+        note: "Blocked by a Cloudflare/ChatGPT challenge page before Builder fields were available.",
+      };
+      await context.close();
+      console.log(JSON.stringify(redact(result), null, 2));
+      return false;
+    }
     const manualSteps = [
       `Add an Action and import the schema URL: ${ui.schema_url}`,
       "Authentication: API key. Auth type: Bearer. Paste the token from `chatgpt-codex token` (not printed here).",
@@ -423,6 +643,7 @@ async function runConfigure(args) {
       gpt_url: capturedUrl || "",
       prefilled: ui.prefilled,
       found_actions_text: ui.found_actions_text,
+      blocked_by_challenge: Boolean(ui.blocked_by_challenge),
       schema_url: ui.schema_url,
       privacy_url: ui.privacy_url,
       manual_steps_required: capturedUrl ? [] : manualSteps,
@@ -438,6 +659,205 @@ async function runConfigure(args) {
   }
   await context.close();
   console.log(JSON.stringify(redact(result), null, 2));
+  return Boolean(result && result.ok);
+}
+
+async function waitForBuilderReady(page, maxSeconds) {
+  const waitSeconds = Number(maxSeconds) > 0 ? Number(maxSeconds) : 600;
+  const deadline = Date.now() + Math.max(10, waitSeconds) * 1000;
+  let lastStatus = null;
+  while (Date.now() < deadline) {
+    lastStatus = await detectBuilder(page);
+    if (lastStatus.loggedIn && lastStatus.hasEditor && !lastStatus.blockedByChallenge) {
+      return { ok: true, ...lastStatus };
+    }
+    process.stderr.write(`${JSON.stringify({
+      stage: "waiting_for_chatgpt_login_or_builder",
+      logged_in: Boolean(lastStatus.loggedIn),
+      has_editor: Boolean(lastStatus.hasEditor),
+      blocked_by_challenge: Boolean(lastStatus.blockedByChallenge),
+      url: lastStatus.url,
+      title: lastStatus.title,
+      note: "Complete ChatGPT login/challenge in the opened browser; setup will continue automatically.",
+      cn_note: "请在已打开的浏览器完成 ChatGPT 登录/验证；setup 会自动继续。",
+    }, null, 2)}\n`);
+    await page.waitForTimeout(3000);
+  }
+  return { ok: false, ...(lastStatus || {}) };
+}
+
+async function runSetup(args) {
+  const config = await readJson(args.config);
+  const waitSeconds = Number(args.wait_seconds) > 0 ? Number(args.wait_seconds) : 600;
+  const captures = [];
+  const context = await launch(args.profile);
+  if (args.mode === "hybrid") startSniffer(context, captures);
+  const page = await context.newPage();
+  let result;
+  try {
+    const ready = await waitForBuilderReady(page, waitSeconds);
+    if (!ready.ok) {
+      result = {
+        ok: false,
+        mode: args.mode,
+        stage: "waiting_for_login_or_builder",
+        logged_in: Boolean(ready.loggedIn),
+        has_editor: Boolean(ready.hasEditor),
+        blocked_by_challenge: Boolean(ready.blockedByChallenge),
+        url: ready.url || page.url(),
+        title: ready.title || "",
+        profile: args.profile,
+        manual_steps_required: [
+          "Complete ChatGPT login/challenge in the opened Playwright browser.",
+          "Rerun `chatgpt-codex setup --workspace <path>` or `chatgpt-codex builder setup`.",
+          "If the challenge persists in the Playwright profile, use the Computer Use or existing-Chrome fallback.",
+        ],
+        note: "Timed out before ChatGPT Builder became usable.",
+      };
+      await writeJsonPrivate(args.state, {
+        schema_version: 1,
+        updated_at: new Date().toISOString(),
+        mode: args.mode,
+        visibility: args.visibility,
+        setup_stage: result.stage,
+        blocked_by_challenge: result.blocked_by_challenge,
+        last_builder_url: page.url(),
+      });
+    } else if (args.mode === "api") {
+      await context.close();
+      return runConfigure(args);
+    } else {
+      const ui = await configureUi(page, config);
+      if (ui.blocked_by_challenge) {
+        result = {
+          ok: false,
+          mode: args.mode,
+          stage: "configure_fields",
+          saved: false,
+          gpt_url: "",
+          blocked_by_challenge: true,
+          schema_url: ui.schema_url,
+          privacy_url: ui.privacy_url,
+          profile: args.profile,
+          manual_steps_required: [
+            "Complete the Cloudflare/ChatGPT challenge in the opened browser.",
+            "Rerun `chatgpt-codex builder setup`.",
+          ],
+          note: "Builder became blocked by a challenge while configuring fields.",
+        };
+        await writeJsonPrivate(args.state, {
+          schema_version: 1,
+          updated_at: new Date().toISOString(),
+          mode: args.mode,
+          visibility: args.visibility,
+          setup_stage: result.stage,
+          blocked_by_challenge: true,
+          last_builder_url: page.url(),
+        });
+      } else {
+        const actionAttempt = await attemptActionSetup(page, context, config, ui, args.visibility);
+        const manualSteps = [
+          `If not already filled, add an Action and import: ${ui.schema_url}`,
+          "Authentication: API key. Auth type: Bearer. Paste the token from `chatgpt-codex token`.",
+          `Privacy policy URL: ${ui.privacy_url}`,
+          `Visibility: save as ${args.visibility === "private" ? "Only me" : args.visibility}.`,
+          "Save the GPT, then open it so its /g/ chat URL loads.",
+        ];
+        process.stderr.write(`${JSON.stringify({
+          stage: "builder_prefilled",
+          prefilled: ui.prefilled,
+          action_attempt: actionAttempt,
+          found_actions_text: ui.found_actions_text,
+          waiting_seconds: waitSeconds,
+          manual_steps_required_if_ui_blocks_automation: manualSteps,
+          note: "Stable text fields are filled and setup attempted Action/auth/save automation. It now waits for a saved /g/ URL.",
+          cn_note: "稳定文本字段已填写，setup 已尝试自动配置 Action/鉴权/保存。现在等待保存后的 /g/ 地址。",
+        }, null, 2)}\n`);
+
+        const capturedUrl = await waitForSavedGptUrl(page, context, waitSeconds);
+        if (args.mode === "hybrid" && captures.length) {
+          await writeJsonPrivate(args.routes, {
+            schema_version: 1,
+            captured_at: new Date().toISOString(),
+            source: "playwright-hybrid-setup",
+            captures: captures.map(redact),
+          });
+        }
+        await writeJsonPrivate(args.state, {
+          schema_version: 1,
+          updated_at: new Date().toISOString(),
+          last_builder_url: page.url(),
+          ...(capturedUrl ? { gpt_url: capturedUrl } : {}),
+          mode: args.mode,
+          visibility: args.visibility,
+          setup_stage: "capture_saved_gpt_url",
+        });
+        result = {
+          ok: Boolean(capturedUrl),
+          mode: args.mode,
+          stage: "capture_saved_gpt_url",
+          saved: Boolean(capturedUrl),
+          gpt_url: capturedUrl || "",
+          prefilled: ui.prefilled,
+          action_attempt: actionAttempt,
+          found_actions_text: ui.found_actions_text,
+          blocked_by_challenge: false,
+          schema_url: ui.schema_url,
+          privacy_url: ui.privacy_url,
+          manual_steps_required: capturedUrl ? [] : manualSteps,
+          state_path: args.state,
+          note: capturedUrl
+            ? "Saved GPT URL captured. The top-level setup command can now run builder smoke."
+            : "No saved GPT URL appeared before timeout.",
+        };
+        if (args.mode === "hybrid" && captures.length) {
+          result.route_map_path = args.routes;
+          result.captured = captures.length;
+        }
+      }
+    }
+  } finally {
+    await context.close().catch(() => {});
+  }
+  console.log(JSON.stringify(redact(result), null, 2));
+  return Boolean(result && result.ok);
+}
+
+async function bodyText(page) {
+  return page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
+}
+
+async function submitSmokePrompt(page, prompt) {
+  const candidates = [
+    page.getByRole("textbox").last(),
+    page.locator("textarea").last(),
+    page.locator('[contenteditable="true"]').last(),
+  ];
+  for (const locator of candidates) {
+    if (!(await locator.count().catch(() => 0))) continue;
+    try {
+      await locator.click({ timeout: 5000 });
+      await page.keyboard.type(prompt);
+      await page.keyboard.press("Enter");
+      return true;
+    } catch {
+      // Try the next composer shape.
+    }
+  }
+  return false;
+}
+
+async function waitForSmokeResult(page, previousText, maxSeconds) {
+  const deadline = Date.now() + Math.max(10, maxSeconds) * 1000;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(2000);
+    const text = await bodyText(page);
+    if (isSmokeSuccessful(text, previousText)) {
+      return { ok: true, body_text_preview: text.slice(-1200) };
+    }
+  }
+  const text = await bodyText(page);
+  return { ok: false, body_text_preview: text.slice(-1200) };
 }
 
 async function runSmoke(args) {
@@ -445,16 +865,38 @@ async function runSmoke(args) {
   const targetUrl = state.gpt_url || state.last_gpt_url || (isSavedGptUrl(state.last_builder_url) ? state.last_builder_url : "");
   const context = await launch(args.profile);
   const page = await context.newPage();
-  await page.goto(targetUrl || CHATGPT_HOME, { waitUntil: "domcontentloaded" });
-  const result = {
-    ok: Boolean(targetUrl),
-    opened: targetUrl || CHATGPT_HOME,
-    message: targetUrl
-      ? "GPT page opened. Ask it to call getWorkspaceStatus; approve the first Action domain prompt if shown."
-      : "No GPT URL saved yet. Finish builder configure/save first.",
-  };
-  await context.close();
-  console.log(JSON.stringify(result, null, 2));
+  let result;
+  try {
+    await page.goto(targetUrl || CHATGPT_HOME, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    if (!targetUrl) {
+      result = {
+        ok: false,
+        opened: CHATGPT_HOME,
+        message: "No GPT URL saved yet. Finish builder configure/save first.",
+      };
+    } else {
+      const waitSeconds = Number(args.wait_seconds) > 0 ? Number(args.wait_seconds) : 90;
+      const beforeText = await bodyText(page);
+      const submitted = await submitSmokePrompt(page, SMOKE_PROMPT);
+      const smoke = submitted ? await waitForSmokeResult(page, beforeText, waitSeconds) : { ok: false, body_text_preview: beforeText.slice(-1200) };
+      result = {
+        ok: Boolean(submitted && smoke.ok),
+        opened: targetUrl,
+        submitted,
+        prompt: SMOKE_PROMPT,
+        wait_seconds: waitSeconds,
+        body_text_preview: smoke.body_text_preview,
+        message: submitted
+          ? "Smoke prompt submitted. The run passes only if a workspace_status Action result appears in the page."
+          : "Could not find a ChatGPT composer to submit the smoke prompt.",
+      };
+    }
+  } finally {
+    await context.close();
+  }
+  console.log(JSON.stringify(redact(result), null, 2));
+  return Boolean(result && result.ok);
 }
 
 // Pure-function self-test. Requires no browser/login so it can run in CI; the
@@ -478,14 +920,25 @@ async function runSelfTest() {
   const parsed = parseArgs(["node", "script", "configure", "--mode", "hybrid", "--wait-seconds", "5"]);
   expect("parses_mode", parsed.mode === "hybrid");
   expect("parses_wait_seconds", parsed.wait_seconds === "5");
+  const setupParsed = parseArgs(["node", "script", "setup", "--wait-seconds", "9"]);
+  expect("parses_setup_wait_seconds", setupParsed.command === "setup" && setupParsed.wait_seconds === "9");
+  expect("smoke_prompt_mentions_action", SMOKE_PROMPT.includes("workspace_status"));
+  expect("smoke_success_detects_workspace_path", isSmokeSuccessful("assistant: active_workspace demo workspace /Users/me/project/demo"));
+  expect("smoke_success_rejects_prompt_only", !isSmokeSuccessful(SMOKE_PROMPT));
+  const challenge = classifyBuilderState("https://chatgpt.com/gpts/editor", "请稍候…", "", true);
+  expect("builder_challenge_detected", challenge.blockedByChallenge && !challenge.hasEditor);
+  expect("setup_timeout_step_detects_challenge", challenge.blockedByChallenge && !challenge.loggedIn);
 
   let playwrightLoaded = false;
+  let playwrightHasChromium = false;
   try {
-    await loadPlaywright();
+    const playwright = await loadPlaywright();
     playwrightLoaded = true;
+    playwrightHasChromium = Boolean(playwright.chromium && typeof playwright.chromium.launchPersistentContext === "function");
   } catch {
     playwrightLoaded = false;
   }
+  expect("playwright_has_chromium", !playwrightLoaded || playwrightHasChromium);
 
   const ok = checks.every(check => check.ok);
   console.log(JSON.stringify({ ok, playwright_loaded: playwrightLoaded, checks }, null, 2));
@@ -496,14 +949,17 @@ async function main() {
   const args = parseArgs(process.argv);
   if (args.command === "self-test") return runSelfTest();
   if (!args.command || !args.profile || !args.config || !args.state || !args.routes) {
-    throw new Error("usage: chatgpt_builder_playwright.mjs <open-login|doctor|sniff|configure|smoke> --config <path> --profile <path> --state <path> --routes <path>");
+    throw new Error("usage: chatgpt_builder_playwright.mjs <open-login|doctor|sniff|configure|setup|smoke> --config <path> --profile <path> --state <path> --routes <path>");
   }
-  if (args.command === "open-login") return runOpenLogin(args);
-  if (args.command === "doctor") return runDoctor(args);
-  if (args.command === "sniff") return runSniff(args);
-  if (args.command === "configure") return runConfigure(args);
-  if (args.command === "smoke") return runSmoke(args);
-  throw new Error(`unknown command: ${args.command}`);
+  let ok;
+  if (args.command === "open-login") ok = await runOpenLogin(args);
+  else if (args.command === "doctor") ok = await runDoctor(args);
+  else if (args.command === "sniff") ok = await runSniff(args);
+  else if (args.command === "configure") ok = await runConfigure(args);
+  else if (args.command === "setup") ok = await runSetup(args);
+  else if (args.command === "smoke") ok = await runSmoke(args);
+  else throw new Error(`unknown command: ${args.command}`);
+  if (ok === false) process.exitCode = 1;
 }
 
 main().catch(error => {

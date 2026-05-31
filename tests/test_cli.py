@@ -221,6 +221,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("workspace", catalog)
         self.assertIn("language", catalog)
         self.assertIn("chatgpt-codex --lang zh <command>", catalog["language"])
+        self.assertIn("chatgpt-codex setup --workspace <path>", catalog["setup"])
         self.assertIn("chatgpt-codex status", catalog["inspect"])
         self.assertIn("chatgpt-codex access status", catalog["inspect"])
         self.assertIn("chatgpt-codex set-public-url <url>", catalog["routing"])
@@ -234,6 +235,55 @@ class CliTests(unittest.TestCase):
         self.assertIn("chatgpt-codex token", catalog["chatgpt_builder"])
         self.assertIn("chatgpt-codex chatgpt-preflight", catalog["chatgpt_builder"])
         self.assertIn("chatgpt-codex open-chatgpt-login", catalog["chatgpt_builder"])
+        self.assertIn("chatgpt-codex setup-smoke", catalog["inspect"])
+
+    def test_setup_dry_run_prints_single_command_product_plan_without_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "setup",
+                        "--workspace",
+                        str(workspace),
+                        "--builder-wait-seconds",
+                        "12",
+                        "--dry-run",
+                    ]
+                )
+
+            plan = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(plan["command"], "setup")
+            self.assertEqual(plan["workspace"], str(workspace.resolve()))
+            self.assertEqual(plan["builder_command"], "chatgpt-codex builder setup")
+            self.assertIn("prepare_local_bridge", plan["steps"])
+            self.assertIn("open_chatgpt_builder", plan["steps"])
+            self.assertIn("smoke_test_saved_gpt", plan["steps"])
+            self.assertFalse(plan["token_printed"])
+
+    def test_setup_smoke_runs_deterministic_local_acceptance(self):
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            exit_code = main(["setup-smoke"])
+
+        result = json.loads(stdout.getvalue())
+        check_names = [check["name"] for check in result["checks"]]
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(result["ok"], msg=json.dumps(result, ensure_ascii=False))
+        self.assertIn("local_server_verify", check_names)
+        self.assertIn("api_smoke", check_names)
+        self.assertIn("bootstrap_rebinds_workspace", check_names)
+        self.assertIn("builder_configure_dry_run", check_names)
+        self.assertIn("builder_setup_dry_run", check_names)
+        self.assertIn("builder_smoke_dry_run", check_names)
 
     def test_chatgpt_preflight_reports_plan_and_builder_boundaries_without_token(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -267,6 +317,35 @@ class CliTests(unittest.TestCase):
             self.assertEqual(preflight["builder_fields"]["authentication"], "API key / Bearer")
             self.assertEqual(preflight["builder_fields"]["schema_import_url"], "https://actions.example.com/openapi.json")
             self.assertNotIn(token, stdout.getvalue())
+
+    def test_builder_configure_dry_run_passes_wait_seconds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            run_quietly(["--config", str(config_path), "init", "--workspace", str(workspace)])
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "builder",
+                        "configure",
+                        "--mode",
+                        "ui",
+                        "--wait-seconds",
+                        "7",
+                        "--dry-run",
+                    ]
+                )
+
+            payload = json.loads(stdout.getvalue())
+            command = payload["command"]
+            self.assertEqual(exit_code, 0)
+            self.assertIn("--wait-seconds", command)
+            self.assertEqual(command[command.index("--wait-seconds") + 1], "7")
 
     def test_doctor_without_config_prints_next_step_instead_of_traceback(self):
         with tempfile.TemporaryDirectory() as tmp:

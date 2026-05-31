@@ -3,7 +3,9 @@ import io
 import tempfile
 import threading
 import unittest
+from argparse import Namespace
 from pathlib import Path
+from unittest.mock import patch
 
 from chatgpt_codex import cli
 from chatgpt_codex.cli import TRYCLOUDFLARE_RE, main
@@ -28,6 +30,48 @@ class BootstrapParserTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as raised:
                 main(["bootstrap", "--help"])
         self.assertEqual(raised.exception.code, 0)
+
+
+class BootstrapConfigTests(unittest.TestCase):
+    def test_existing_config_registers_and_activates_requested_workspace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            old_workspace = root / "old"
+            new_workspace = root / "new"
+            old_workspace.mkdir()
+            new_workspace.mkdir()
+            cfg = root / "config.json"
+            old_config = AppConfig(
+                token="keep-token",
+                workspaces={"old": old_workspace},
+                active_workspace="old",
+                host="127.0.0.1",
+                port=1111,
+                public_base_url="https://old.example.com",
+            )
+            old_config.revoke_access()
+            save_config(old_config, cfg, overwrite=True)
+
+            args = Namespace(
+                workspace=str(new_workspace),
+                workspace_name="new",
+                host="127.0.0.1",
+                port=2222,
+                public_base_url="https://new.example.com/",
+                force=False,
+            )
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                config = cli._prepare_bootstrap_config(args, cfg)
+
+            self.assertEqual(config.token, "keep-token")
+            self.assertEqual(config.active_workspace, "new")
+            self.assertEqual(config.workspace, new_workspace.resolve())
+            self.assertIn("old", config.workspaces)
+            self.assertEqual(config.host, "127.0.0.1")
+            self.assertEqual(config.port, 2222)
+            self.assertEqual(config.public_base_url, "https://new.example.com")
+            self.assertTrue(config.access_status()["active"])
 
 
 class BootstrapCoreTests(unittest.TestCase):
@@ -66,6 +110,27 @@ class BootstrapCoreTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=5)
+
+    def test_bootstrap_ready_returns_false_when_verification_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "ws"
+            workspace.mkdir()
+            config = AppConfig(
+                token="demo-token",
+                workspaces={"ws": workspace},
+                active_workspace="ws",
+                public_base_url="https://bad.example.com",
+            )
+
+            with patch.object(cli, "_wait_health", return_value=False), patch.object(
+                cli,
+                "_verify_actions",
+                return_value={"ok": False, "checks": [{"name": "health", "ok": False}]},
+            ):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    ready = cli._bootstrap_ready(config, Path(tmp) / "config.json", "https://bad.example.com", 1)
+
+            self.assertEqual(ready, False)
 
 
 if __name__ == "__main__":

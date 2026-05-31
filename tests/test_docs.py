@@ -161,14 +161,15 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("prepare-permissions.ps1", readme)
         self.assertNotIn("password", template_path.read_text(encoding="utf-8").lower())
 
-    def test_install_scripts_point_new_users_to_channel_register(self):
+    def test_install_scripts_point_new_users_to_setup_and_setup_smoke(self):
         root = Path(__file__).resolve().parents[1]
         install_sh = (root / "scripts" / "install.sh").read_text(encoding="utf-8")
         install_ps1 = (root / "scripts" / "install.ps1").read_text(encoding="utf-8")
 
         for content in [install_sh, install_ps1]:
             with self.subTest(script=content[:20]):
-                self.assertIn("chatgpt-codex channel register", content)
+                self.assertIn("chatgpt-codex setup-smoke", content)
+                self.assertIn("chatgpt-codex setup --workspace", content)
                 self.assertNotIn("chatgpt-codex init --workspace", content)
 
 

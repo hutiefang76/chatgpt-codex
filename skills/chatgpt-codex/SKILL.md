@@ -12,34 +12,24 @@ Use this skill to turn this repository into a working local coding bridge for Ch
 ## Workflow / 流程
 
 1. Ask only for the minimal human inputs before changing local state.
-2. Run `chatgpt-codex chatgpt-preflight` before browser work.
-3. If login is needed, open `chatgpt-codex builder open-login` and wait for the human to finish login in the Playwright persistent profile.
-4. Open ChatGPT Builder and confirm the account can create or edit a GPT with Actions.
-5. Install the local launcher.
-6. Save setup permissions in `.chatgpt-codex/permissions.json`.
-7. Create config for the target workspace.
-8. Start the local server and set up or use a public HTTPS route when ChatGPT web access is needed.
-9. Use Playwright with a dedicated persistent profile as the primary ChatGPT Builder automation path.
-10. Use internal API sniffing only as a same-session acceleration layer, then refresh the Builder page and verify.
-11. Use Computer Use only as a fallback when Playwright cannot operate the page.
-12. Verify health, schema, and one authenticated read-only action.
-13. Print or apply the final ChatGPT Builder fields.
+2. Install the local launcher if needed.
+3. Save setup permissions in `.chatgpt-codex/permissions.json` when the user has provided authorization.
+4. Run `chatgpt-codex setup --workspace <path>` as the production entry point.
+5. Let setup open ChatGPT Builder, wait for the human login in the Playwright persistent profile, configure the stable fields, attempt Action/auth/save automation, capture the saved GPT URL, and run the smoke test when possible.
+6. Use internal API sniffing only as a same-session acceleration layer, then refresh the Builder page and verify.
+7. Use Computer Use only as a fallback when Playwright cannot operate the page.
+8. Verify health, schema, and one authenticated read-only action before claiming completion.
 
 中文：
 
 1. 修改本地状态前，只向用户询问真人必须提供的最小信息。
-2. 浏览器操作前运行 `chatgpt-codex chatgpt-preflight`。
-3. 如需登录，运行 `chatgpt-codex builder open-login` 打开 Playwright 持久化 profile，并等待真人完成登录。
-4. 打开 ChatGPT Builder，确认账号可以创建或编辑带 Actions 的 GPT。
-5. 安装本地启动器。
-6. 将配置授权保存到 `.chatgpt-codex/permissions.json`。
-7. 为目标 workspace 创建配置。
-8. 启动本地服务；当需要 ChatGPT 网页端访问时，配置或使用公网 HTTPS 入口。
-9. 默认使用带独立持久化 profile 的 Playwright 作为 ChatGPT Builder 自动化主路径。
-10. 内部 API 嗅探只作为同会话加速层，之后必须刷新 Builder 页面并验证。
-11. 只有 Playwright 无法操作页面时，才用 Computer Use 兜底。
-12. 验证健康检查、schema，以及一个带鉴权的只读 Action。
-13. 打印或填写最终可用于 ChatGPT Builder 的字段。
+2. 如有需要，安装本地启动器。
+3. 用户已授权时，将配置授权保存到 `.chatgpt-codex/permissions.json`。
+4. 生产级入口运行 `chatgpt-codex setup --workspace <path>`。
+5. 让 setup 打开 ChatGPT Builder、等待真人在 Playwright 持久化 profile 中登录、配置稳定字段、尝试自动配置 Action/鉴权/保存、捕获保存后的 GPT 地址，并在可行时运行冒烟测试。
+6. 内部 API 嗅探只作为同会话加速层，之后必须刷新 Builder 页面并验证。
+7. 只有 Playwright 无法操作页面时，才用 Computer Use 兜底。
+8. 声称完成前，验证健康检查、schema，以及一个带鉴权的只读 Action。
 
 For a copyable user prompt and detailed checklist, read `references/agent-handoff.md`.
 
@@ -124,8 +114,8 @@ Primary path:
 - 用户登录后，用 `chatgpt-codex builder doctor` 检查 Builder 页面和 Actions 是否可用。
 - Use `chatgpt-codex builder payload --json` as the single source of truth for GPT name, description, instructions, schema URL, privacy URL, auth type, and visibility. It does not print the bearer token.
 - 使用 `chatgpt-codex builder payload --json` 作为 GPT 名称、描述、instructions、schema URL、privacy URL、鉴权类型和可见性的唯一字段来源。它不会打印 bearer token。
-- Use `chatgpt-codex builder configure --mode ui` to prefill name/description/instructions; then complete Add Action + bearer token + save by hand. It waits and auto-captures the saved GPT URL so `builder smoke` works end to end.
-- 使用 `chatgpt-codex builder configure --mode ui` 预填名称/描述/指令；然后手动完成 添加 Action + 填 token + 保存。它会等待并自动捕获保存后的 GPT 地址，让 `builder smoke` 端到端可用。
+- Prefer `chatgpt-codex setup --workspace <path>` for first-time setup. Use `chatgpt-codex builder setup` only when rerunning the Builder portion separately.
+- 首次配置优先使用 `chatgpt-codex setup --workspace <path>`。只有需要单独重跑 Builder 部分时，才使用 `chatgpt-codex builder setup`。
 
 Internal API acceleration:
 
@@ -168,26 +158,28 @@ AI-native management:
 
 AI-native 管理：
 
-- Use `chatgpt-codex bootstrap --workspace <path>` to do the whole local side in one deterministic command (register, serve, tunnel with auto-captured URL, verify, print Builder fields). It needs no AI; only ChatGPT login and the final Builder save stay manual.
-- 用 `chatgpt-codex bootstrap --workspace <path>` 一条确定性命令完成本地全部步骤（注册、起服务、起隧道并自动捕获 URL、验证、打印 Builder 字段）。无需 AI；只有 ChatGPT 登录和 Builder 最后保存仍需手动。
+- Use `chatgpt-codex setup --workspace <path>` as the production entry point. It registers the workspace, starts the server, starts or uses the HTTPS route, verifies the Action API, opens ChatGPT Builder, waits for human login, attempts Action/auth/save automation, captures the saved GPT URL, and runs the smoke test when possible.
+- 用 `chatgpt-codex setup --workspace <path>` 作为生产级入口。它会注册 workspace、启动服务、启动或使用 HTTPS 入口、验证 Action API、打开 ChatGPT Builder、等待真人登录、尝试自动配置 Action/鉴权/保存、捕获保存后的 GPT 地址，并在可行时运行冒烟测试。
+- Run `chatgpt-codex setup-smoke` before touching the real workspace. It verifies local server setup, the Action API smoke path, bootstrap workspace rebinding, Builder dry-run commands, and the Node Builder bridge self-test in temporary workspaces.
+- 触碰真实 workspace 前先运行 `chatgpt-codex setup-smoke`。它会在临时 workspace 中验证本地服务、Action API 冒烟路径、bootstrap 重新绑定 workspace、Builder dry-run 命令和 Node Builder bridge 自测。
 - Start with `chatgpt-codex status` to read machine-readable local state.
 - 先运行 `chatgpt-codex status` 读取机器可读的本地状态。
 - `status` reports `node_found`, `npx_found`, and `builder_profile_path`; Node/npx are needed for Playwright Builder automation, not for the local server.
 - `status` 会报告 `node_found`、`npx_found` 和 `builder_profile_path`；Node/npx 是 Playwright Builder 自动化需要的，本地服务本身不需要。
 - Use `chatgpt-codex chatgpt-preflight` before browser setup. It prints plan prerequisites, login handoff commands, Builder automation boundaries, and Builder fields without printing the token.
 - 浏览器配置前先用 `chatgpt-codex chatgpt-preflight`。它会打印套餐前提、登录交接命令、Builder 自动化边界和 Builder 字段，但不会打印 token。
-- Use `chatgpt-codex builder payload --json`, `chatgpt-codex builder doctor`, `chatgpt-codex builder configure --mode ui`, `chatgpt-codex builder sniff`, and `chatgpt-codex builder smoke` for the Builder workflow.
-- Builder 流程使用 `chatgpt-codex builder payload --json`、`chatgpt-codex builder doctor`、`chatgpt-codex builder configure --mode ui`、`chatgpt-codex builder sniff` 和 `chatgpt-codex builder smoke`。
-- Use `chatgpt-codex builder open-login` when the user must log in. Open the Playwright browser, wait for the user to say login is complete, then continue with `chatgpt-codex builder doctor`.
-- 用户需要登录时用 `chatgpt-codex builder open-login`。打开 Playwright 浏览器，等待用户确认登录完成，再用 `chatgpt-codex builder doctor` 继续。
+- Use `chatgpt-codex builder payload --json`, `chatgpt-codex builder setup`, `chatgpt-codex builder sniff`, and `chatgpt-codex builder smoke` when repairing the Builder workflow separately.
+- 单独修复 Builder 流程时使用 `chatgpt-codex builder payload --json`、`chatgpt-codex builder setup`、`chatgpt-codex builder sniff` 和 `chatgpt-codex builder smoke`。
+- If `builder doctor`, `builder setup`, or `builder configure` returns `blockedByChallenge` / `blocked_by_challenge`, ask the user to complete the challenge in the Playwright browser. If it persists, use Computer Use or Chrome fallback for the Builder UI.
+- 如果 `builder doctor`、`builder setup` 或 `builder configure` 返回 `blockedByChallenge` / `blocked_by_challenge`，请用户在 Playwright 浏览器中完成人机验证。如果仍然卡住，使用 Computer Use 或 Chrome 兜底操作 Builder UI。
 - Use `chatgpt-codex ai-commands` to discover the local command catalog.
 - 用 `chatgpt-codex ai-commands` 获取本地命令目录。
-- Use `chatgpt-codex channel register --workspace <path> --public-base-url <url>` for first registration. It stores the public URL and token in `.chatgpt-codex/config.json` under the local repository root.
-- 首次注册通道时使用 `chatgpt-codex channel register --workspace <path> --public-base-url <url>`。它会把公网 URL 和 token 存在本地仓库根目录的 `.chatgpt-codex/config.json`。
+- Prefer `chatgpt-codex setup --workspace <path>` for first registration. Use `chatgpt-codex bootstrap --workspace <path>` or `chatgpt-codex channel register --workspace <path> --public-base-url <url>` only for low-level manual setup.
+- 首次注册优先使用 `chatgpt-codex setup --workspace <path>`。只有需要底层手动配置时，才使用 `chatgpt-codex bootstrap --workspace <path>` 或 `chatgpt-codex channel register --workspace <path> --public-base-url <url>`。
 - Use `chatgpt-codex channel renew --public-base-url <url>` after a tunnel or custom route gives the final public URL.
 - 隧道或自定义入口给出最终公网 URL 后，用 `chatgpt-codex channel renew --public-base-url <url>` 保存。
-- Use `chatgpt-codex api-smoke` before browser work to test Action interfaces directly in temporary workspaces.
-- 浏览器操作前用 `chatgpt-codex api-smoke` 在临时工作区直接测试 Action 接口。
+- Use `chatgpt-codex setup-smoke` before browser work. Use `chatgpt-codex api-smoke` for a narrower Action-only check.
+- 浏览器操作前用 `chatgpt-codex setup-smoke`。需要只检查 Action 接口时再单独运行 `chatgpt-codex api-smoke`。
 - Use `chatgpt-codex serve` for normal personal use. Do not add a TTL unless the user explicitly wants a short-lived session.
 - 普通个人自用时使用 `chatgpt-codex serve`。除非用户明确需要短时会话，否则不要添加 TTL。
 - Use `chatgpt-codex channel status` for token-safe inspection, `chatgpt-codex channel revoke` when exposure should stop immediately, and `chatgpt-codex channel renew` to reactivate the channel.
@@ -204,6 +196,7 @@ macOS 安装：
 ```bash
 ./scripts/install.sh
 . .venv/bin/activate
+chatgpt-codex setup-smoke
 ```
 
 Install on Windows PowerShell:
@@ -213,6 +206,7 @@ Windows PowerShell 安装：
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 . .\.venv\Scripts\Activate.ps1
+chatgpt-codex setup-smoke
 ```
 
 Configure:
@@ -234,8 +228,8 @@ chatgpt-codex authorize \
 ```
 
 ```bash
-chatgpt-codex channel register --workspace "$WORKSPACE" --public-base-url "$PUBLIC_BASE_URL"
-chatgpt-codex doctor
+chatgpt-codex setup-smoke
+chatgpt-codex setup --workspace "$WORKSPACE"
 ```
 
 Optional additional authorized projects:
@@ -257,9 +251,8 @@ Windows PowerShell：
 
 ```powershell
 $Workspace = "C:\absolute\path\to\project"
-$PublicBaseUrl = "https://actions.example.com"
-chatgpt-codex channel register --workspace "$Workspace" --public-base-url "$PublicBaseUrl"
-chatgpt-codex doctor
+chatgpt-codex setup-smoke
+chatgpt-codex setup --workspace "$Workspace"
 ```
 
 Access plan rules:
@@ -320,7 +313,7 @@ If the user approved browser automation, use Playwright first:
 chatgpt-codex chatgpt-preflight
 chatgpt-codex builder open-login
 chatgpt-codex builder doctor
-chatgpt-codex builder configure --mode ui
+chatgpt-codex builder setup
 chatgpt-codex builder smoke
 ```
 
@@ -411,6 +404,6 @@ chatgpt-codex gpt-instructions
 chatgpt-codex token
 ```
 
-Tell the user to paste the token only into the ChatGPT Builder Action authentication field.
+Do not print the token unless the user explicitly asks for a low-level manual Builder handoff.
 
-告诉用户只把 token 粘贴到 ChatGPT Builder 的 Action 鉴权字段。
+除非用户明确要求底层手动 Builder 交接，否则不要打印 token。

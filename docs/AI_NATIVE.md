@@ -24,7 +24,7 @@ Ask me only for the minimal human inputs:
 
 Use a temporary HTTPS tunnel when I do not provide Cloudflare login plus a domain. Use the fixed hostname chatgpt-codex.<domain> when both are available.
 
-Then install, configure, start, verify, and give me the exact ChatGPT Builder fields. Do not ask me to choose the OS, access plan, port, or subdomain unless I explicitly override defaults.
+Then install and run `chatgpt-codex setup --workspace <path>`. Open the ChatGPT login page for me when needed, wait for my login, and continue automatically. Do not ask me to choose the OS, access plan, port, or subdomain unless I explicitly override defaults.
 
 Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelated secrets.
 ```
@@ -41,7 +41,7 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 
 如果我没有同时提供 Cloudflare 登录和域名，使用临时 HTTPS 隧道。如果两者都具备，使用固定域名 chatgpt-codex.<domain>。
 
-然后完成安装、配置、启动、验证，并给我可直接填写到 ChatGPT Builder 的字段。除非我明确要覆盖默认值，不要问我选择操作系统、访问方案、端口或子域名。
+然后完成安装并运行 `chatgpt-codex setup --workspace <path>`。需要我登录时直接打开 ChatGPT 登录页，等待我登录后自动继续。除非我明确要覆盖默认值，不要问我选择操作系统、访问方案、端口或子域名。
 
 不要索要我的 ChatGPT 密码、浏览器 cookie、OpenAI API key 或无关密钥。
 ```
@@ -52,8 +52,10 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 修改本地状态前只收集真人必须提供的最小信息。
 - Run `./scripts/install.sh` on macOS or `.\scripts\install.ps1` on Windows PowerShell.
 - macOS 运行 `./scripts/install.sh`；Windows PowerShell 运行 `.\scripts\install.ps1`。
-- Run `chatgpt-codex channel register --workspace <path> --public-base-url <url>` for the first channel registration.
-- 首次注册通道时运行 `chatgpt-codex channel register --workspace <path> --public-base-url <url>`。
+- Run `chatgpt-codex setup-smoke` before touching the real workspace; it verifies the local setup path in temporary workspaces.
+- 触碰真实 workspace 前先运行 `chatgpt-codex setup-smoke`；它会用临时 workspace 验证本地配置路径。
+- Run `chatgpt-codex setup --workspace <path>` as the production entry point. It registers the workspace, starts the local server, starts or uses the public HTTPS route, verifies the Action API, opens ChatGPT Builder, waits for human login, attempts Action/auth/save automation, captures the saved GPT URL, and runs the smoke test when possible.
+- 生产级入口运行 `chatgpt-codex setup --workspace <path>`。它会注册 workspace、启动本地服务、启动或使用公网 HTTPS 入口、验证 Action API、打开 ChatGPT Builder、等待真人登录、尝试自动配置 Action/鉴权/保存、捕获保存后的 GPT 地址，并在可行时运行冒烟测试。
 - Use `chatgpt-codex status` and `chatgpt-codex ai-commands` for machine-readable local management.
 - 使用 `chatgpt-codex status` 和 `chatgpt-codex ai-commands` 做机器可读的本地管理。
 - Run `chatgpt-codex chatgpt-preflight` before browser setup. It reports account prerequisites, login handoff commands, Builder limits, and Builder fields without printing the bearer token.
@@ -66,20 +68,22 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 运行 `chatgpt-codex route-options` 和 `chatgpt-codex authorize`，把选项保存到 `.chatgpt-codex/permissions.json`。
 - If the user wants manual file editing, copy root `permissions.example.json` with `scripts/prepare-permissions.sh` or `scripts/prepare-permissions.ps1`.
 - 如果用户想手工编辑文件，用 `scripts/prepare-permissions.sh` 或 `scripts/prepare-permissions.ps1` 复制根目录的 `permissions.example.json`。
-- Run `chatgpt-codex doctor`.
-- 运行 `chatgpt-codex doctor`。
-- Start `chatgpt-codex serve`. Do not set a TTL for normal personal use unless the user asks for a short-lived session.
-- 启动 `chatgpt-codex serve`。普通个人自用不要设置 TTL，除非用户明确要求短时会话。
+- Use `chatgpt-codex doctor` only for recovery or diagnostics after setup.
+- 只有在 setup 后需要恢复或诊断时，才使用 `chatgpt-codex doctor`。
+- Do not set a TTL for normal personal use unless the user asks for a short-lived session.
+- 普通个人自用不要设置 TTL，除非用户明确要求短时会话。
 - Use a temporary HTTPS tunnel when no Cloudflare login/domain are provided; use `chatgpt-codex.<domain>` when both are provided.
 - 没有 Cloudflare 登录/域名时使用临时 HTTPS 隧道；两者都提供时使用 `chatgpt-codex.<domain>`。
-- Open ChatGPT Builder with `chatgpt-codex builder open-login` and `chatgpt-codex builder doctor` after browser automation is approved.
-- 用户授权浏览器自动化后，用 `chatgpt-codex builder open-login` 和 `chatgpt-codex builder doctor` 打开并检查 ChatGPT Builder。
+- Use `chatgpt-codex builder setup` only when you need to repair or rerun the Builder portion separately from the top-level setup command.
+- 只有需要单独修复或重跑 Builder 部分时，才使用 `chatgpt-codex builder setup`。
+- If Playwright reports `blockedByChallenge` / `blocked_by_challenge`, ask the user to complete the challenge in the Playwright browser; if it persists, switch to Computer Use or Chrome fallback for the Builder UI.
+- 如果 Playwright 报告 `blockedByChallenge` / `blocked_by_challenge`，请用户在 Playwright 浏览器里完成人机验证；如果仍然卡住，切换到 Computer Use 或 Chrome 兜底操作 Builder UI。
 - If internal API acceleration is needed, run `chatgpt-codex builder sniff`, replay only in the same Playwright browser context, then refresh and verify. Stop if the editor or Actions section is unavailable.
 - 如果需要内部 API 加速，运行 `chatgpt-codex builder sniff`；replay 只能在同一个 Playwright 浏览器会话中进行，然后刷新并验证。如果编辑器或 Actions 区域不可用，停止。
 - Ensure GPT instructions mention `workspace_status`, `list_workspaces`, and `switch_workspace` for showing and switching the current local directory.
 - 确保 GPT Instructions 写明用 `workspace_status`、`list_workspaces` 和 `switch_workspace` 显示并切换当前本地目录。
-- Run `chatgpt-codex api-smoke` before browser work to test the Action interfaces directly in temporary workspaces.
-- 浏览器操作前运行 `chatgpt-codex api-smoke`，在临时工作区里直接测试 Action 接口。
+- Run `chatgpt-codex setup-smoke` before browser work; use `chatgpt-codex api-smoke` when only the Action API surface changed.
+- 浏览器操作前运行 `chatgpt-codex setup-smoke`；只有 Action API 表面变化时可单独运行 `chatgpt-codex api-smoke`。
 - Use `chatgpt-codex channel status` to inspect registration without leaking the token. Use `chatgpt-codex channel revoke` to disable the channel, and `chatgpt-codex channel renew` to reactivate it.
 - 用 `chatgpt-codex channel status` 查看注册状态且不泄露 token。用 `chatgpt-codex channel revoke` 停用通道，用 `chatgpt-codex channel renew` 重新激活。
 - Use `chatgpt-codex rotate-token` only when Builder auth must be refreshed manually.
@@ -90,5 +94,5 @@ Do not ask for my ChatGPT password, browser cookies, OpenAI API key, or unrelate
 - 优先用 `chatgpt-codex verify` 做机器可读的最终验证。
 - Print `chatgpt-codex gpt-instructions`.
 - 打印 `chatgpt-codex gpt-instructions`。
-- Give the user the token privately for the Builder auth field.
-- 将 token 私下交给用户，用于 Builder 鉴权字段。
+- Do not print the token unless the user explicitly asks for a low-level manual Builder handoff.
+- 除非用户明确要求底层手动 Builder 交接，否则不要打印 token。

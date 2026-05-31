@@ -20,8 +20,8 @@ By the end, the user should have:
 - 一个能访问该服务的公网 HTTPS 地址；
 - a generated bearer token kept private;
 - 一个已生成并妥善保管的 bearer token；
-- ChatGPT Builder fields ready to paste;
-- 可直接粘贴到 ChatGPT Builder 的配置字段；
+- ChatGPT Builder configured or a machine-readable Builder blocker reported;
+- ChatGPT Builder 已配置，或已报告机器可读的 Builder 阻塞原因；
 - a verified read-only Action call.
 - 一个验证通过的只读 Action 调用。
 - direct interface smoke results from temporary workspaces.
@@ -79,8 +79,7 @@ chatgpt-codex authorize \
   --allow-install-helpers \
   --allow-workspace-write \
   --allow-command-execution
-chatgpt-codex channel register --workspace "$WORKSPACE" --public-base-url "$PUBLIC_BASE_URL"
-chatgpt-codex doctor
+chatgpt-codex setup --workspace "$WORKSPACE"
 ```
 
 Windows PowerShell:
@@ -103,40 +102,12 @@ chatgpt-codex authorize `
   --allow-install-helpers `
   --allow-workspace-write `
   --allow-command-execution
-chatgpt-codex channel register --workspace "$Workspace" --public-base-url "$PublicBaseUrl"
-chatgpt-codex doctor
+chatgpt-codex setup --workspace "$Workspace"
 ```
 
-Start the local server:
+`setup` already opens Builder, waits for login, attempts Action/auth/save automation, and runs the smoke test when possible. Use `chatgpt-codex builder sniff` to discover internal Builder API routes only inside the same Playwright browser context. Use Computer Use only as a fallback. Never ask for or store ChatGPT passwords, cookies, browser session data, or API keys.
 
-启动本地服务：
-
-```bash
-chatgpt-codex serve
-```
-
-If the user chose the built-in quick tunnel, start:
-
-如果用户选择内置临时隧道，启动：
-
-```bash
-chatgpt-codex tunnel
-```
-
-If browser automation is approved, use Playwright after the user has logged in manually:
-
-如果用户授权浏览器自动化，请在用户手动登录后打开 ChatGPT Builder：
-
-```bash
-chatgpt-codex builder open-login
-chatgpt-codex builder doctor
-chatgpt-codex builder configure --mode ui
-chatgpt-codex builder smoke
-```
-
-Use `chatgpt-codex builder sniff` to discover internal Builder API routes only inside the same Playwright browser context. Use Computer Use only as a fallback. Never ask for or store ChatGPT passwords, cookies, browser session data, or API keys.
-
-使用 `chatgpt-codex builder sniff` 只在同一个 Playwright 浏览器会话中发现内部 Builder API 路由。Computer Use 仅作为兜底。不要索要或保存 ChatGPT 密码、cookie、浏览器会话数据或 API key。
+`setup` 已经会打开 Builder、等待登录、尝试自动配置 Action/鉴权/保存，并在可行时运行冒烟测试。使用 `chatgpt-codex builder sniff` 只在同一个 Playwright 浏览器会话中发现内部 Builder API 路由。Computer Use 仅作为兜底。不要索要或保存 ChatGPT 密码、cookie、浏览器会话数据或 API key。
 
 ## Verify / 验证
 
@@ -172,9 +143,9 @@ Run:
 
 ```bash
 chatgpt-codex gpt-instructions
-chatgpt-codex token
+chatgpt-codex status
 ```
 
-Tell the user to paste the token only into the ChatGPT Builder Action authentication field.
+Do not print the token unless the user explicitly asks for a low-level manual Builder handoff.
 
-告诉用户只把 token 粘贴到 ChatGPT Builder 的 Action 鉴权字段。
+除非用户明确要求底层手动 Builder 交接，否则不要打印 token。

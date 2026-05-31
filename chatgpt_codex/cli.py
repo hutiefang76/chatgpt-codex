@@ -1,4 +1,6 @@
 import argparse
+import contextlib
+import io
 import json
 import os
 import platform
@@ -73,6 +75,26 @@ def main(argv=None) -> int:
     verify_parser.add_argument("--timeout", type=int, default=10, help="Request timeout seconds. / 请求超时秒数。")
     api_smoke_parser = subcommands.add_parser("api-smoke", help="Run an interface-level smoke test in temporary workspaces. / 在临时工作区运行接口级冒烟测试。")
     api_smoke_parser.add_argument("--timeout", type=int, default=10, help="Request timeout seconds. / 请求超时秒数。")
+    setup_smoke_parser = subcommands.add_parser("setup-smoke", help="Run deterministic local setup acceptance checks without ChatGPT login. / 不登录 ChatGPT，运行确定性的本地配置验收。")
+    setup_smoke_parser.add_argument("--timeout", type=int, default=10, help="Request timeout seconds. / 请求超时秒数。")
+    setup_parser = subcommands.add_parser("setup", help="Production one-command setup: prepare the bridge, open ChatGPT Builder, wait for login, configure, and smoke test. / 生产级一条命令：准备桥、打开 Builder、等待登录、配置并冒烟测试。")
+    setup_parser.add_argument("--workspace", required=True, help="Workspace ChatGPT may access. / ChatGPT 可访问的工作区。")
+    setup_parser.add_argument("--workspace-name", default="", help="Name for this workspace. / 这个工作区的名称。")
+    setup_parser.add_argument("--public-base-url", default="", help="Use this HTTPS URL instead of starting a quick tunnel. / 使用此 HTTPS URL，不启动临时隧道。")
+    setup_parser.add_argument("--no-tunnel", action="store_true", help="Do not start a tunnel; useful only for local verification or a separately managed route. / 不启动隧道；仅适合本地验证或外部已配置入口。")
+    setup_parser.add_argument("--cloudflared", default="cloudflared")
+    setup_parser.add_argument("--host", default="127.0.0.1")
+    setup_parser.add_argument("--port", type=int, default=8766)
+    setup_parser.add_argument("--timeout", type=int, default=10, help="Local verify request timeout seconds. / 本地验证请求超时秒数。")
+    setup_parser.add_argument("--builder-mode", choices=["ui", "hybrid", "api"], default="ui")
+    setup_parser.add_argument("--visibility", choices=["private", "link", "store"], default="private")
+    setup_parser.add_argument("--builder-wait-seconds", type=int, default=600, help="How long to wait for ChatGPT login/Builder save. / 等待 ChatGPT 登录和 Builder 保存的秒数。")
+    setup_parser.add_argument("--smoke-wait-seconds", type=int, default=90, help="How long to wait for the GPT Action smoke response. / 等待 GPT Action 冒烟响应的秒数。")
+    setup_parser.add_argument("--skip-builder", action="store_true", help="Prepare the bridge only; do not open ChatGPT Builder. / 只准备桥，不打开 ChatGPT Builder。")
+    setup_parser.add_argument("--skip-smoke", action="store_true", help="Skip the saved GPT Action smoke test. / 跳过已保存 GPT Action 冒烟测试。")
+    setup_parser.add_argument("--run-setup-smoke", action="store_true", help="Run deterministic local acceptance before opening ChatGPT. / 打开 ChatGPT 前运行确定性本地验收。")
+    setup_parser.add_argument("--force", action="store_true", help="Overwrite existing config. / 覆盖已有配置。")
+    setup_parser.add_argument("--dry-run", action="store_true")
     subcommands.add_parser("permissions", help="Print saved setup permissions. / 打印已保存的配置授权。")
     template_parser = subcommands.add_parser("permissions-template", help="Print or write a permissions template. / 打印或写入授权模板。")
     template_parser.add_argument("--output", default="", help="Optional output path. / 可选输出路径。")
@@ -99,8 +121,15 @@ def main(argv=None) -> int:
     builder_configure = builder_subcommands.add_parser("configure", help="Configure the GPT Builder using UI, hybrid, or API mode. / 使用 UI、hybrid 或 API 模式配置 GPT Builder。")
     builder_configure.add_argument("--mode", choices=["ui", "hybrid", "api"], default="ui")
     builder_configure.add_argument("--visibility", choices=["private", "link", "store"], default="private")
+    builder_configure.add_argument("--wait-seconds", type=int, default=600, help="How long to wait for manual Builder save capture. / 等待手动保存 Builder 并捕获地址的秒数。")
     builder_configure.add_argument("--dry-run", action="store_true")
+    builder_setup = builder_subcommands.add_parser("setup", help="Open Builder, wait for login, configure fields, capture the saved GPT URL. / 打开 Builder、等待登录、配置字段并捕获已保存 GPT 地址。")
+    builder_setup.add_argument("--mode", choices=["ui", "hybrid", "api"], default="ui")
+    builder_setup.add_argument("--visibility", choices=["private", "link", "store"], default="private")
+    builder_setup.add_argument("--wait-seconds", type=int, default=600, help="How long to wait for login and saved GPT URL. / 等待登录和已保存 GPT 地址的秒数。")
+    builder_setup.add_argument("--dry-run", action="store_true")
     builder_smoke = builder_subcommands.add_parser("smoke", help="Run a real GPT Action smoke test through ChatGPT. / 通过 ChatGPT 运行真实 GPT Action 冒烟测试。")
+    builder_smoke.add_argument("--wait-seconds", type=int, default=90, help="How long to wait for the GPT Action response. / 等待 GPT Action 响应的秒数。")
     builder_smoke.add_argument("--dry-run", action="store_true")
 
     serve_parser = subcommands.add_parser("serve", help="Start the local HTTP action server. / 启动本地 HTTP Action 服务。")
@@ -272,6 +301,12 @@ def main(argv=None) -> int:
         result = _api_smoke(args.timeout)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0 if result["ok"] else 1
+    if args.command == "setup-smoke":
+        result = _setup_smoke(args.timeout)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result["ok"] else 1
+    if args.command == "setup":
+        return _setup(args, cfg_path)
     if args.command == "channel":
         if args.channel_command == "status":
             print(json.dumps(_channel_status(cfg_path, include_paths=args.show_paths), indent=2, ensure_ascii=False))
@@ -455,6 +490,7 @@ def _ai_command_catalog() -> dict:
             "CHATGPT_CODEX_LANG=zh chatgpt-codex <command>",
         ],
         "setup": [
+            "chatgpt-codex setup --workspace <path>",
             "chatgpt-codex bootstrap --workspace <path>",
             "chatgpt-codex channel register --workspace <path> --public-base-url <url>",
             "chatgpt-codex init --workspace <path> --workspace-name <name> --public-base-url <url>",
@@ -469,6 +505,7 @@ def _ai_command_catalog() -> dict:
             "chatgpt-codex verify",
             "chatgpt-codex verify --base-url <url>",
             "chatgpt-codex api-smoke",
+            "chatgpt-codex setup-smoke",
             "chatgpt-codex route-options",
             "chatgpt-codex workspace status",
             "chatgpt-codex workspace list",
@@ -488,6 +525,7 @@ def _ai_command_catalog() -> dict:
             "chatgpt-codex builder payload --json",
             "chatgpt-codex builder open-login",
             "chatgpt-codex builder doctor",
+            "chatgpt-codex builder setup",
             "chatgpt-codex builder sniff",
             "chatgpt-codex builder configure --mode ui",
             "chatgpt-codex builder configure --mode hybrid",
@@ -675,11 +713,15 @@ def _builder_command(args, config: AppConfig, cfg_path: Path) -> int:
         else:
             _print_builder_payload_text(payload)
         return 0
-    if args.builder_command in {"open-login", "doctor", "sniff", "configure", "smoke"}:
+    if args.builder_command in {"open-login", "doctor", "sniff", "configure", "setup", "smoke"}:
         command_payload = _builder_playwright_payload(args, cfg_path)
         if getattr(args, "dry_run", False):
             print(json.dumps(command_payload, indent=2, ensure_ascii=False))
             return 0
+        if not _playwright_browser_cache_exists():
+            install_code = subprocess.call(_builder_playwright_install_command())
+            if install_code != 0:
+                return install_code
         return subprocess.call(command_payload["command"])
     return 2
 
@@ -717,8 +759,10 @@ def _builder_playwright_payload(args, cfg_path: Path) -> dict:
         "--routes",
         str(route_map),
     ]
-    if args.builder_command == "configure":
+    if args.builder_command in {"configure", "setup"}:
         command.extend(["--mode", args.mode, "--visibility", args.visibility])
+    if args.builder_command in {"configure", "setup", "smoke"} and hasattr(args, "wait_seconds"):
+        command.extend(["--wait-seconds", str(args.wait_seconds)])
     return {
         "command": command,
         "profile_path": str(playwright_profile_dir()),
@@ -727,6 +771,32 @@ def _builder_playwright_payload(args, cfg_path: Path) -> dict:
         "uses_playwright_persistent_profile": True,
         "token_printed": False,
     }
+
+
+def _builder_playwright_install_command() -> list:
+    return ["npx", "--yes", "--package", "playwright", "playwright", "install", "chromium"]
+
+
+def _playwright_browser_cache_exists() -> bool:
+    override = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
+    roots = []
+    if override and override != "0":
+        roots.append(Path(override).expanduser())
+    system = platform.system().lower()
+    if system == "darwin":
+        roots.append(Path.home() / "Library" / "Caches" / "ms-playwright")
+    elif system == "windows":
+        local_app_data = os.environ.get("LOCALAPPDATA", "")
+        base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+        roots.append(base / "ms-playwright")
+    else:
+        cache_home = os.environ.get("XDG_CACHE_HOME", "")
+        base = Path(cache_home) if cache_home else Path.home() / ".cache"
+        roots.append(base / "ms-playwright")
+    for root in roots:
+        if root.exists() and any(root.glob("chromium-*")):
+            return True
+    return False
 
 
 def _verify_actions(config: AppConfig, base_url: str, timeout: int) -> dict:
@@ -884,6 +954,384 @@ def _api_smoke(timeout: int) -> dict:
         }
 
 
+def _setup_smoke(timeout: int) -> dict:
+    """Run local setup acceptance checks without touching real user state.
+
+    不触碰真实用户状态，运行本地配置验收。
+    """
+
+    checks = []
+    with tempfile.TemporaryDirectory(prefix="chatgpt-codex-setup-smoke-") as tmp:
+        root = Path(tmp)
+        first = root / "first"
+        second = root / "second"
+        first.mkdir()
+        second.mkdir()
+        (first / "hello.txt").write_text("hello\n", encoding="utf-8")
+        config_file = root / "config.json"
+
+        local_config = AppConfig(
+            token="setup-smoke-token",
+            workspaces={"first": first},
+            active_workspace="first",
+            host="127.0.0.1",
+            port=0,
+            public_base_url="http://127.0.0.1",
+        )
+        server = create_server(local_config, config_file)
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        local_config.public_base_url = base_url
+        save_config(local_config, config_file, overwrite=True)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            verify = _verify_actions(local_config, base_url, timeout)
+            checks.append(_setup_check("local_server_verify", verify["ok"], verify))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+        api = _api_smoke(timeout)
+        checks.append(_setup_check("api_smoke", api["ok"], {"checks": [item["name"] for item in api["checks"]]}))
+
+        old_config = AppConfig(
+            token="preserve-token",
+            workspaces={"first": first},
+            active_workspace="first",
+            host="127.0.0.1",
+            port=1111,
+            public_base_url="https://old.example.com",
+        )
+        old_config.revoke_access()
+        save_config(old_config, config_file, overwrite=True)
+        args = argparse.Namespace(
+            workspace=str(second),
+            workspace_name="second",
+            host="127.0.0.1",
+            port=2222,
+            public_base_url="https://actions.example.com",
+            force=False,
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            prepared = _prepare_bootstrap_config(args, config_file)
+        checks.append(
+            _setup_check(
+                "bootstrap_rebinds_workspace",
+                prepared.token == "preserve-token"
+                and prepared.active_workspace == "second"
+                and prepared.workspace == second.resolve()
+                and prepared.access_status()["active"],
+                {
+                    "active_workspace": prepared.active_workspace,
+                    "workspace": str(prepared.workspace),
+                    "access": prepared.access_status(),
+                    "token_preserved": prepared.token == "preserve-token",
+                },
+            )
+        )
+
+        configure_payload = _builder_playwright_payload(
+            argparse.Namespace(builder_command="configure", mode="ui", visibility="private", wait_seconds=5, output=""),
+            config_file,
+        )
+        checks.append(_setup_check("builder_configure_dry_run", _builder_command_has(configure_payload, ["configure", "--wait-seconds", "5"]), configure_payload))
+
+        setup_payload = _builder_playwright_payload(
+            argparse.Namespace(builder_command="setup", mode="ui", visibility="private", wait_seconds=6, output=""),
+            config_file,
+        )
+        checks.append(_setup_check("builder_setup_dry_run", _builder_command_has(setup_payload, ["setup", "--wait-seconds", "6"]), setup_payload))
+
+        smoke_payload = _builder_playwright_payload(
+            argparse.Namespace(builder_command="smoke", wait_seconds=7, output=""),
+            config_file,
+        )
+        checks.append(_setup_check("builder_smoke_dry_run", _builder_command_has(smoke_payload, ["smoke", "--wait-seconds", "7"]), smoke_payload))
+
+        checks.append(_node_builder_self_test(timeout))
+
+    return {
+        "ok": all(check["ok"] for check in checks),
+        "kind": "setup-smoke",
+        "checks": checks,
+    }
+
+
+def _builder_command_has(payload: dict, expected_parts) -> bool:
+    command = [str(part) for part in payload.get("command", [])]
+    return all(part in command for part in expected_parts)
+
+
+def _node_builder_self_test(timeout: int) -> dict:
+    npx = shutil.which("npx")
+    if not npx:
+        return _setup_check("builder_script_self_test", True, {"skipped": True, "reason": "npx not found"})
+    script = Path.cwd() / "scripts" / "chatgpt_builder_playwright.mjs"
+    result = subprocess.run(
+        [npx, "--yes", "--package", "playwright", "node", str(script), "self-test"],
+        cwd=str(Path.cwd()),
+        capture_output=True,
+        text=True,
+        timeout=max(10, int(timeout or 10) * 3),
+    )
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except ValueError:
+        payload = {"stdout": result.stdout[:500], "stderr": result.stderr[:500]}
+    return _setup_check(
+        "builder_script_self_test",
+        result.returncode == 0 and bool(payload.get("ok")),
+        {"returncode": result.returncode, "payload": payload, "stderr": result.stderr[:500]},
+    )
+
+
+def _setup_check(name: str, ok: bool, details: object) -> dict:
+    check = {
+        "name": name,
+        "ok": bool(ok),
+        "preview": _json_preview(details),
+    }
+    if isinstance(details, dict):
+        for key in ("status", "error", "skipped"):
+            if key in details:
+                check[key] = details[key]
+    return check
+
+
+def _setup_plan(args, cfg_path: Path) -> dict:
+    workspace_path = Path(args.workspace).expanduser().resolve()
+    uses_tunnel = not args.no_tunnel and not args.public_base_url
+    return {
+        "command": "setup",
+        "config_path": str(cfg_path),
+        "workspace": str(workspace_path),
+        "workspace_name": args.workspace_name or workspace_path.name or "default",
+        "public_base_url": args.public_base_url.rstrip("/") if args.public_base_url else "",
+        "route": "quick-tunnel" if uses_tunnel else ("provided-public-url" if args.public_base_url else "local-only"),
+        "cloudflared": args.cloudflared,
+        "builder_command": "chatgpt-codex builder setup",
+        "builder_mode": args.builder_mode,
+        "visibility": args.visibility,
+        "builder_wait_seconds": args.builder_wait_seconds,
+        "smoke_wait_seconds": args.smoke_wait_seconds,
+        "steps": [
+            "prepare_local_bridge",
+            "start_local_action_server",
+            "start_or_use_public_https_route",
+            "verify_action_schema_and_auth",
+            "open_chatgpt_builder",
+            "wait_for_human_chatgpt_login",
+            "configure_builder_and_capture_saved_gpt",
+            "smoke_test_saved_gpt",
+            "keep_bridge_running_until_ctrl_c",
+        ],
+        "token_printed": False,
+        "human_required": ["ChatGPT login in the opened browser"],
+        "notes": [
+            "ChatGPT has no public GPT Builder creation API; the command uses Playwright in a persistent profile.",
+            "If ChatGPT or Cloudflare blocks automation, the command returns a machine-readable blocked_by_challenge result.",
+            "Without --public-base-url, setup needs cloudflared in PATH to expose ChatGPT-reachable HTTPS.",
+        ],
+    }
+
+
+def _setup(args, cfg_path: Path) -> int:
+    if args.dry_run:
+        print(json.dumps(_setup_plan(args, cfg_path), indent=2, ensure_ascii=False))
+        return 0
+
+    if args.run_setup_smoke:
+        smoke = _setup_smoke(args.timeout)
+        print(json.dumps({"stage": "setup_smoke", **smoke}, indent=2, ensure_ascii=False))
+        if not smoke["ok"]:
+            return 1
+
+    config = _prepare_bootstrap_config(args, cfg_path)
+    server = create_server(config, cfg_path)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    tunnel_proc = None
+    tunnel_thread = None
+    exit_code = 0
+
+    try:
+        print(json.dumps(
+            {
+                "stage": "local_server_started",
+                "active_workspace": config.active_workspace,
+                "workspace": str(config.workspace),
+                "local_url": f"http://{config.host}:{server.server_port}",
+            },
+            indent=2,
+            ensure_ascii=False,
+        ))
+
+        public_url, tunnel_proc, tunnel_thread = _setup_public_route(args, config, cfg_path, server.server_port)
+        if not public_url:
+            return 1
+
+        result = _verify_actions(config, public_url, args.timeout)
+        print(json.dumps(
+            {
+                "stage": "bridge_verified",
+                "ok": result["ok"],
+                "public_base_url": public_url,
+                "openapi_url": f"{public_url.rstrip('/')}/openapi.json",
+                "active_workspace": config.active_workspace,
+                "workspace": str(config.workspace),
+                "checks": result["checks"],
+            },
+            indent=2,
+            ensure_ascii=False,
+        ))
+        if not result["ok"]:
+            return 1
+
+        if args.skip_builder:
+            print(json.dumps(
+                {
+                    "stage": "builder_skipped",
+                    "ok": True,
+                    "message": "Bridge is running. Press Ctrl-C to stop.",
+                    "cn_message": "本地桥已运行。按 Ctrl-C 停止。",
+                },
+                indent=2,
+                ensure_ascii=False,
+            ))
+            thread.join()
+            return 0
+
+        builder_code = _run_builder_runtime(
+            cfg_path,
+            "setup",
+            mode=args.builder_mode,
+            visibility=args.visibility,
+            wait_seconds=args.builder_wait_seconds,
+        )
+        if builder_code != 0:
+            return builder_code
+
+        if not args.skip_smoke:
+            smoke_code = _run_builder_runtime(
+                cfg_path,
+                "smoke",
+                wait_seconds=args.smoke_wait_seconds,
+            )
+            if smoke_code != 0:
+                return smoke_code
+
+        print(json.dumps(
+            {
+                "stage": "setup_complete_bridge_running",
+                "ok": True,
+                "public_base_url": config.public_base_url.rstrip("/"),
+                "message": "Setup completed and the bridge is still running. Press Ctrl-C to stop.",
+                "cn_message": "配置已完成，本地桥继续运行。按 Ctrl-C 停止。",
+            },
+            indent=2,
+            ensure_ascii=False,
+        ))
+        thread.join()
+    except KeyboardInterrupt:
+        print("\nStopped / 已停止。")
+    finally:
+        server.shutdown()
+        server.server_close()
+        if tunnel_proc is not None:
+            _terminate(tunnel_proc)
+        if tunnel_thread is not None:
+            tunnel_thread.join(timeout=5)
+    return exit_code
+
+
+def _setup_public_route(args, config: AppConfig, cfg_path: Path, server_port: int):
+    if args.public_base_url:
+        public_url = args.public_base_url.rstrip("/")
+        config.public_base_url = public_url
+        save_config(config, cfg_path, overwrite=True)
+        return public_url, None, None
+
+    local_url = f"http://{config.host}:{server_port}"
+    if args.no_tunnel:
+        config.public_base_url = local_url
+        save_config(config, cfg_path, overwrite=True)
+        print("Using local-only URL. ChatGPT web cannot call this unless your browser/network exposes it. / 使用本地 URL；除非网络已额外暴露，否则 ChatGPT 网页端无法访问。", file=sys.stderr)
+        return local_url, None, None
+
+    cloudflared = shutil.which(args.cloudflared)
+    if not cloudflared:
+        print("cloudflared not found. Install cloudflared or pass --public-base-url; ChatGPT web needs a public HTTPS URL. / 找不到 cloudflared。请安装 cloudflared 或传入 --public-base-url；ChatGPT 网页端需要公网 HTTPS 地址。", file=sys.stderr)
+        return "", None, None
+
+    proc, pump_thread, public_url = _start_cloudflared_quick_tunnel(
+        cloudflared,
+        local_url,
+        config,
+        cfg_path,
+        args.timeout,
+    )
+    if not public_url:
+        _terminate(proc)
+        pump_thread.join(timeout=5)
+        print("cloudflared started but no trycloudflare URL was captured before timeout. / cloudflared 已启动，但超时前没有捕获到 trycloudflare 地址。", file=sys.stderr)
+        return "", None, None
+    return public_url, proc, pump_thread
+
+
+def _start_cloudflared_quick_tunnel(cloudflared: str, local_url: str, config: AppConfig, cfg_path: Path, timeout: int):
+    proc = subprocess.Popen(
+        [cloudflared, "tunnel", "--url", local_url],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    captured = {"url": ""}
+    captured_event = threading.Event()
+
+    def pump() -> None:
+        if proc.stdout is None:
+            return
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            if captured["url"]:
+                continue
+            match = TRYCLOUDFLARE_RE.search(line)
+            if match:
+                captured["url"] = match.group(0).rstrip("/")
+                config.public_base_url = captured["url"]
+                save_config(config, cfg_path, overwrite=True)
+                print(f"\nPublic URL captured and saved / 已捕获并保存公网 URL: {captured['url']}")
+                print(f"OpenAPI: {captured['url']}/openapi.json")
+                captured_event.set()
+
+    pump_thread = threading.Thread(target=pump, daemon=True)
+    pump_thread.start()
+    deadline = time.monotonic() + max(20, min(int(timeout or 10) * 6, 90))
+    while time.monotonic() < deadline:
+        if captured_event.is_set():
+            break
+        if proc.poll() is not None:
+            break
+        time.sleep(0.2)
+    return proc, pump_thread, captured["url"]
+
+
+def _run_builder_runtime(cfg_path: Path, builder_command: str, mode: str = "ui", visibility: str = "private", wait_seconds: int = 600) -> int:
+    args = argparse.Namespace(
+        builder_command=builder_command,
+        mode=mode,
+        visibility=visibility,
+        wait_seconds=wait_seconds,
+        output="",
+        dry_run=False,
+    )
+    config = load_config(cfg_path)
+    return _builder_command(args, config, cfg_path)
+
+
 def _api_get(url: str, timeout: int) -> dict:
     return _api_request(Request(url, method="GET"), timeout)
 
@@ -1014,12 +1462,19 @@ def _wait_health(base_url: str, timeout: int) -> bool:
     return False
 
 
-def _bootstrap(args, cfg_path: Path) -> int:
+def _prepare_bootstrap_config(args, cfg_path: Path) -> AppConfig:
     workspace_path = Path(args.workspace).expanduser().resolve()
     workspace_name = args.workspace_name or workspace_path.name or "default"
     if cfg_path.exists() and not args.force:
         config = load_config(cfg_path)
-        print(f"Reusing existing config / 复用已有配置: {cfg_path}")
+        config.add_workspace(workspace_name, workspace_path, activate=True)
+        config.host = args.host
+        config.port = args.port
+        config.access_expires_at = ""
+        if args.public_base_url:
+            config.public_base_url = args.public_base_url.rstrip("/")
+        save_config(config, cfg_path, overwrite=True)
+        print(f"Config updated, token preserved / 配置已更新并保留 token: {cfg_path}")
     else:
         config = AppConfig(
             token=generate_token(),
@@ -1031,6 +1486,11 @@ def _bootstrap(args, cfg_path: Path) -> int:
         )
         save_config(config, cfg_path, overwrite=True)
         print(f"Config written / 配置已写入: {cfg_path}")
+    return config
+
+
+def _bootstrap(args, cfg_path: Path) -> int:
+    config = _prepare_bootstrap_config(args, cfg_path)
 
     server = create_server(config, cfg_path)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1044,6 +1504,7 @@ def _bootstrap(args, cfg_path: Path) -> int:
         use_tunnel = False
 
     proc = None
+    exit_code = 0
     try:
         if use_tunnel:
             local_url = f"http://{config.host}:{config.port}"
@@ -1054,13 +1515,27 @@ def _bootstrap(args, cfg_path: Path) -> int:
                 text=True,
                 bufsize=1,
             )
-            _pump_cloudflared(proc, config, cfg_path, lambda url: _bootstrap_ready(config, cfg_path, url, args.timeout))
+            ready_ok = None
+
+            def on_url(url: str) -> None:
+                nonlocal ready_ok
+                ready_ok = _bootstrap_ready(config, cfg_path, url, args.timeout)
+                if not ready_ok:
+                    _terminate(proc)
+
+            tunnel_code = _pump_cloudflared(proc, config, cfg_path, on_url)
+            if ready_ok is False:
+                exit_code = 1
+            elif ready_ok is None and tunnel_code:
+                exit_code = tunnel_code
         else:
             public_url = (args.public_base_url or config.public_base_url or f"http://{config.host}:{config.port}").rstrip("/")
             config.public_base_url = public_url
             save_config(config, cfg_path, overwrite=True)
-            _bootstrap_ready(config, cfg_path, public_url, args.timeout)
-            thread.join()
+            if _bootstrap_ready(config, cfg_path, public_url, args.timeout):
+                thread.join()
+            else:
+                exit_code = 1
     except KeyboardInterrupt:
         print("\nStopped / 已停止。")
     finally:
@@ -1068,10 +1543,10 @@ def _bootstrap(args, cfg_path: Path) -> int:
         server.server_close()
         if proc is not None:
             _terminate(proc)
-    return 0
+    return exit_code
 
 
-def _bootstrap_ready(config: AppConfig, cfg_path: Path, public_url: str, timeout: int) -> None:
+def _bootstrap_ready(config: AppConfig, cfg_path: Path, public_url: str, timeout: int) -> bool:
     base = public_url.rstrip("/")
     reachable = _wait_health(base, timeout)
     result = _verify_actions(config, base, timeout)
@@ -1099,6 +1574,7 @@ def _bootstrap_ready(config: AppConfig, cfg_path: Path, public_url: str, timeout
     print("2) chatgpt-codex builder configure --mode ui")
     print("3) chatgpt-codex builder smoke")
     print("\nServer and tunnel stay up until Ctrl-C. / 服务与隧道保持运行，按 Ctrl-C 停止。")
+    return bool(result["ok"])
 
 
 def _platform_label() -> str:

@@ -1,19 +1,20 @@
 # ChatGPT Codex
 
-[English](README.md) | [Chinese](README.zh-CN.md)
+[Chinese](README.zh-CN.md) | [English](README.md)
 
-Use ChatGPT web as a ChatGPT local coding bridge through Custom GPT Actions.
+ChatGPT Codex turns ChatGPT web into a ChatGPT local coding bridge through Custom GPT Actions. The production path is one command: the user logs in to ChatGPT in the opened browser, then waits while the local bridge, public route, Builder setup, and smoke test run.
 
-The local server runs with only the Python standard library. ChatGPT web cannot reach `localhost` directly, so a public HTTPS route is required for real ChatGPT Actions use. The built-in `tunnel` command uses `cloudflared`; you can also provide your own HTTPS route.
+The local server runs with only the Python standard library. ChatGPT web cannot reach `localhost` directly, so real ChatGPT Actions use needs a public HTTPS route. The built-in `tunnel` command uses `cloudflared`; you can also provide your own HTTPS route.
 
 ## What It Does
 
-- Works as an AI-native setup tool: give the repository to Codex or Claude, answer a few setup questions, then wait for it to configure and verify the bridge.
 - Exposes a bearer-protected HTTP API for one registered local workspace.
-- Lets a Custom GPT list, read, search, write, patch, and run commands in that workspace.
+- Lets a private GPT list, read, search, write, patch, and run commands in that workspace.
 - Generates an OpenAPI document that ChatGPT Actions can import.
-- Keeps all paths sandboxed under the configured workspace.
+- Keeps file paths sandboxed under registered workspace roots.
+- Supports workspace switching by registered workspace name, never arbitrary paths.
 - Blocks common destructive shell commands by default.
+- Gives Codex or Claude an AI-native command catalog for setup, inspection, and recovery.
 
 ## Requirements
 
@@ -22,20 +23,71 @@ The local server runs with only the Python standard library. ChatGPT web cannot 
 - Node.js/npm with `npx` for Playwright Builder automation. The local server itself does not require Node.
 - A ChatGPT account or plan that can create Custom GPTs with Actions. Do not assume Free tier can create or edit GPTs; run `chatgpt-codex chatgpt-preflight` and check the Builder page after login.
 - Local OS permission to read and write the workspace you configure.
-- Optional: `cloudflared`, only for the built-in `chatgpt-codex tunnel` command.
+- Optional: `cloudflared`, only for the built-in `chatgpt-codex tunnel` command or the default quick-tunnel route used by `setup`.
 - Optional: a Cloudflare-managed domain if you want a stable hostname such as `chatgpt-codex.example.com`.
 
 ## Minimal Human Inputs
 
-- Human login to ChatGPT in the Playwright persistent profile is required. The agent must not ask for ChatGPT passwords, cookies, sessions, or API keys.
-- Workspace path is required, for example `/Users/me/project/demo`.
-- Browser human login to Cloudflare is optional, only for a stable Cloudflare-managed custom hostname.
-- A Cloudflare-managed domain is optional. If provided, the fixed hostname is `chatgpt-codex.<domain>`.
-- One local authorization is required: allow the agent to detect the OS, choose the route, install needed helpers, start the service, open the Playwright browser, configure Builder after human login, write the workspace, and execute commands inside the workspace.
+The intended user experience is deliberately small:
 
-Defaults: if no Cloudflare login and domain are provided, the agent uses a temporary HTTPS tunnel for ChatGPT web. If both are available, the agent may configure the stable hostname `chatgpt-codex.<domain>`. Local-only mode is for tests or explicit user requests.
+1. Human login to ChatGPT in the Playwright persistent profile: required. The agent must not ask for ChatGPT passwords, cookies, sessions, or API keys.
+2. Workspace path: required, for example `/Users/me/project/demo`.
+3. Browser human login to Cloudflare: optional, only for a stable Cloudflare-managed custom hostname.
+4. Cloudflare-managed domain: optional. If provided, the fixed hostname is `chatgpt-codex.<domain>`.
+5. Local authorization: required. Allow the agent to detect the OS, choose the route, install needed helpers, start services, open the Playwright browser, configure Builder after human login, write the workspace, and execute commands inside the workspace.
 
-## Skills Setup
+Defaults: if no Cloudflare login and domain are provided, use a temporary HTTPS tunnel for ChatGPT web. If both are available, use `chatgpt-codex.<domain>`. Local-only mode is for tests or explicit user requests.
+
+## Local Authorization File
+
+For AI-native setup, save the user's local permission choices in `.chatgpt-codex/permissions.json`. The root `permissions.example.json` file is a safe template. A user can copy it with `./scripts/prepare-permissions.sh` on macOS or `.\scripts\prepare-permissions.ps1` on Windows PowerShell, or an agent can write validated values directly:
+
+```bash
+chatgpt-codex authorize \
+  --workspace /absolute/path/to/your/project \
+  --operating-system auto \
+  --access-plan built-in-quick-tunnel \
+  --public-base-url https://temporary-or-stable-url.example.com \
+  --allow-browser-automation \
+  --allow-start-services \
+  --allow-install-helpers \
+  --allow-workspace-write \
+  --allow-command-execution
+```
+
+## Quick Start
+
+macOS:
+
+```bash
+git clone git@github.com:hutiefang76/chatgpt-codex.git
+cd chatgpt-codex
+./scripts/install.sh
+. .venv/bin/activate
+chatgpt-codex setup --workspace /absolute/path/to/your/project
+```
+
+Windows PowerShell:
+
+```powershell
+git clone git@github.com:hutiefang76/chatgpt-codex.git
+cd chatgpt-codex
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+. .\.venv\Scripts\Activate.ps1
+chatgpt-codex setup --workspace "C:\absolute\path\to\your\project"
+```
+
+If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process Bypass -Force` in that terminal and retry activation.
+
+The `setup` command prepares the local bridge, starts or uses a public HTTPS route, verifies the Action API, opens ChatGPT Builder, waits for the human ChatGPT login, captures the saved GPT URL, and runs `builder smoke` when possible. The bridge then stays running until `Ctrl-C`.
+
+For a dry run that prints the plan without touching browsers or starting tunnels:
+
+```bash
+chatgpt-codex setup --workspace /absolute/path/to/your/project --dry-run
+```
+
+## AI-Native Setup
 
 Give this repository to Codex or Claude and ask it to use the bundled skill:
 
@@ -55,77 +107,16 @@ chatgpt-codex ai-native
 chatgpt-codex agent-brief
 ```
 
-## Language
-
-The CLI supports language selection for machine-readable status and command discovery:
-
-```bash
-chatgpt-codex --lang en status
-chatgpt-codex --lang zh status
-CHATGPT_CODEX_LANG=en chatgpt-codex ai-commands
-CHATGPT_CODEX_LANG=zh chatgpt-codex ai-commands
-```
-
-The README is split by language. Use the links at the top of the file to switch between English and Chinese.
-
-## Save Local Authorization
-
-Before automation, save the user's setup choices and permissions in the repository-local `.chatgpt-codex/permissions.json`.
-
-The root file `permissions.example.json` is a safe template. A user can copy it manually, or an AI agent can generate the real file with `chatgpt-codex authorize`.
-
-macOS helper:
-
-```bash
-./scripts/prepare-permissions.sh
-```
-
-Windows PowerShell helper:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\prepare-permissions.ps1
-```
-
-Generate validated permissions:
-
-```bash
-chatgpt-codex authorize \
-  --workspace /absolute/path/to/your/project \
-  --operating-system auto \
-  --access-plan built-in-quick-tunnel \
-  --public-base-url https://temporary-or-stable-url.example.com \
-  --allow-browser-automation \
-  --allow-start-services \
-  --allow-install-helpers \
-  --allow-workspace-write \
-  --allow-command-execution
-```
-
-Windows PowerShell:
-
-```powershell
-chatgpt-codex authorize `
-  --workspace "C:\absolute\path\to\your\project" `
-  --operating-system auto `
-  --access-plan built-in-quick-tunnel `
-  --public-base-url https://temporary-or-stable-url.example.com `
-  --allow-browser-automation `
-  --allow-start-services `
-  --allow-install-helpers `
-  --allow-workspace-write `
-  --allow-command-execution
-```
-
-## AI-Native CLI Management
-
-Agents should use machine-readable commands first:
+Agents should prefer machine-readable commands:
 
 ```bash
 chatgpt-codex --lang en status
 chatgpt-codex ai-commands
 chatgpt-codex chatgpt-preflight
-chatgpt-codex channel status
+chatgpt-codex setup --workspace /absolute/path/to/project --dry-run
+chatgpt-codex setup-smoke
 chatgpt-codex api-smoke
+chatgpt-codex channel status
 chatgpt-codex access status
 chatgpt-codex set-public-url https://your-current-public-url
 chatgpt-codex channel renew --public-base-url https://your-current-public-url
@@ -136,9 +127,11 @@ chatgpt-codex verify
 
 `ai-commands` prints the local command catalog for language selection, setup, inspection, workspace switching, Builder fields, runtime, and access lifecycle.
 
-`chatgpt-preflight` prints the ChatGPT-side prerequisites, the login URL, the Builder automation boundary, and the exact Builder fields derived from the current local config without printing the bearer token.
+`chatgpt-preflight` prints the ChatGPT-side prerequisites, the login URL, the Builder automation boundary, and Builder fields derived from the current local config without printing the bearer token.
 
 `api-smoke` starts a temporary local server and tests the Action interfaces directly: auth, health, schema, workspace status, workspace listing, file list/read/write/search/patch, command execution, workspace switching, and safety blocks. It does not touch your real workspace.
+
+`setup-smoke` is the deterministic local acceptance test for the setup path. It uses temporary workspaces to verify the local server, `api-smoke`, bootstrap workspace rebinding, Builder dry-run commands, and the Node Builder bridge self-test without requiring ChatGPT login.
 
 ## Builder Automation
 
@@ -151,6 +144,7 @@ chatgpt-codex builder profile-path
 chatgpt-codex builder payload --json
 chatgpt-codex builder open-login
 chatgpt-codex builder doctor
+chatgpt-codex builder setup
 chatgpt-codex builder configure --mode ui
 chatgpt-codex builder configure --mode hybrid
 chatgpt-codex builder sniff
@@ -159,15 +153,23 @@ chatgpt-codex builder smoke
 
 `builder payload --json` produces the GPT name, description, instructions, schema URL, privacy URL, visibility, and automation metadata without printing the bearer token.
 
-`builder open-login` opens ChatGPT in the Playwright persistent profile. After the user logs in manually, `builder doctor` checks whether the Builder page loads and whether Actions appear available.
+`builder setup` opens ChatGPT Builder in the persistent Playwright profile, waits while the user completes login or a browser challenge, fills stable Builder fields, attempts Action/auth/save automation, waits for a saved `https://chatgpt.com/g/...` URL, and stores it in `.chatgpt-codex/builder.json`.
 
-`builder configure --mode ui` prefills the GPT name, description, and instructions, then keeps the browser open and waits while you add the Action, paste the bearer token, set privacy/visibility, and save. When you open the saved GPT, it auto-captures the `https://chatgpt.com/g/...` URL into `.chatgpt-codex/builder.json` so `builder smoke` can run end to end. Adding the Action and pasting the token stay manual on purpose: the Builder UI for those steps has no stable controls. `builder configure --mode hybrid` does the same while also capturing redacted Builder network traffic. `builder sniff` is the explicit internal API discovery flow: perform one Builder save/configure action in the opened browser, press `Ctrl-C`, and the redacted route map is saved to `.chatgpt-codex/builder-routes.json`.
+If `builder doctor`, `builder setup`, or `builder configure` reports `blockedByChallenge` / `blocked_by_challenge`, complete the ChatGPT or Cloudflare challenge in that Playwright browser and rerun the command. If the challenge persists, use Computer Use or the existing-Chrome fallback for the Builder UI.
 
-Internal API replay must stay inside the same Playwright browser context. Do not export cookies, sessions, or ChatGPT credentials. Treat internal routes as unstable acceleration data; if they do not validate, fall back to UI automation. Computer Use is the visual fallback for controls, dialogs, or page changes that Playwright cannot operate.
+`builder smoke` opens the saved GPT, submits a `workspace_status` smoke prompt, and exits non-zero unless a workspace-status result appears on the page. `builder configure --mode hybrid` also captures redacted Builder network traffic. `builder sniff` is the explicit internal API discovery flow: perform one Builder save/configure action in the opened browser, press `Ctrl-C`, and the redacted route map is saved to `.chatgpt-codex/builder-routes.json`.
+
+Internal API replay must stay inside the same Playwright browser context. Do not export cookies, sessions, or ChatGPT credentials. Treat internal routes as unstable acceleration data; if they do not validate, fall back to UI automation.
 
 ## Channel Lifecycle
 
-First registration binds this local tool install to the exact workspace path you pass:
+First registration binds this local tool install to the exact workspace path you pass. The high-level command does this automatically:
+
+```bash
+chatgpt-codex setup --workspace /absolute/path/to/your/project
+```
+
+Low-level registration is still available when you already know the HTTPS URL:
 
 ```bash
 chatgpt-codex channel register \
@@ -175,7 +177,7 @@ chatgpt-codex channel register \
   --public-base-url https://chatgpt-codex.example.com
 ```
 
-This stores the public URL, registered workspace path, active workspace name, and generated bearer token in `.chatgpt-codex/config.json` under this repository root. This is the normal local-secret pattern here: `.chatgpt-codex/` is ignored by Git, and config files are written as private files on macOS/Linux. Do not commit or publish it.
+Local secrets are stored in `.chatgpt-codex/config.json` under this repository root. This file contains the public URL, registered workspace paths, active workspace name, and bearer token. `.chatgpt-codex/` is ignored by Git, and config files are written as private files on macOS/Linux. Do not commit or publish it.
 
 Lifecycle commands:
 
@@ -189,232 +191,53 @@ chatgpt-codex channel renew --ttl-minutes 120
 
 `channel status` never prints the token. `channel revoke` disables the channel immediately and rotates the token silently. `channel renew` reactivates access and prints the current token once for ChatGPT Builder.
 
-Low-level commands are still available for advanced use: `chatgpt-codex rotate-token` prints a new token, and `chatgpt-codex access revoke` expires access and rotates the token without printing it.
+Low-level access commands are also available:
+
+```bash
+chatgpt-codex rotate-token
+chatgpt-codex access revoke
+chatgpt-codex access status
+```
+
+Default personal-use access does not expire while the server is running. If you intentionally want a short-lived session, start with `chatgpt-codex serve --ttl-minutes 120` or renew with `--ttl-minutes`.
+
+## Workspace Switching
+
+Add another authorized project:
+
+```bash
+chatgpt-codex workspace add --name api --path /absolute/path/to/api
+chatgpt-codex workspace add --name web --path /absolute/path/to/web --activate
+chatgpt-codex workspace list
+chatgpt-codex workspace switch api
+```
+
+Inside GPT chat, ask the GPT to call `workspace_status`, `list_workspaces`, and `switch_workspace`. The current local directory should be shown before file or command work.
 
 ## Closed-loop product flow
 
 1. Collect minimal human inputs and local authorization.
-2. Run `chatgpt-preflight`; if needed, open `builder open-login` and wait for the human to finish login in the Playwright persistent profile.
-3. Run `builder doctor` and confirm the account can create or edit a GPT with Actions.
-4. Install and run `channel register` to create `.chatgpt-codex/config.json`.
-5. Register authorized workspaces and select `active_workspace`.
-6. Start the local server.
-7. Start or provide a public HTTPS route.
-8. Save the final public URL with `channel renew --public-base-url <url>` or `set-public-url`.
-9. Run `api-smoke` for direct interface testing, then `verify` against the running route.
-10. Configure ChatGPT Builder with `builder configure --mode ui`, or use `builder sniff` plus `builder configure --mode api` after route validation.
-11. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
+2. Install the launcher on macOS or Windows PowerShell.
+3. Run `chatgpt-codex setup --workspace <path>`.
+4. Complete ChatGPT login in the opened Playwright browser.
+5. Let setup verify the bridge, configure Builder, capture the saved GPT URL, and run `builder smoke`.
+6. In GPT chat, use `workspace_status`, `list_workspaces`, and `switch_workspace` before file or command work.
 
-## One-command setup (deterministic)
+## Lower-Level Commands
 
-`chatgpt-codex bootstrap` runs the whole local side in one command — register a channel, start the server, start the quick tunnel and auto-capture its public URL, then verify and print the exact ChatGPT Builder fields. Every step is deterministic and needs no AI. The only things it cannot do for you are the ChatGPT login and the final Builder "Add Action + paste token + Save" click.
+`chatgpt-codex bootstrap` remains available for deterministic local-side setup only. It registers a channel, starts the server, starts the quick tunnel and auto-captures its public URL, then verifies and prints Builder fields. It does not perform the top-level Builder setup flow.
 
 ```bash
 chatgpt-codex bootstrap --workspace /absolute/path/to/your/project
-```
-
-Use your own HTTPS route instead of a tunnel, or test locally:
-
-```bash
 chatgpt-codex bootstrap --workspace /absolute/path/to/your/project --public-base-url https://actions.example.com
 chatgpt-codex bootstrap --workspace /absolute/path/to/your/project --no-tunnel
 ```
 
-It keeps the server and tunnel running until `Ctrl-C`. Once it prints "Bridge ready" with `verify_ok: true`, log in and finish the Builder steps:
-
-```bash
-chatgpt-codex builder open-login
-chatgpt-codex builder configure --mode ui
-chatgpt-codex builder smoke
-```
-
-## Manual Setup
-
-macOS Terminal:
-
-```bash
-git clone git@github.com:hutiefang76/chatgpt-codex.git
-cd chatgpt-codex
-./scripts/install.sh
-. .venv/bin/activate
-chatgpt-codex channel register \
-  --workspace /absolute/path/to/your/project \
-  --public-base-url https://chatgpt-codex.example.com
-chatgpt-codex serve
-```
-
-Windows PowerShell:
-
-```powershell
-git clone git@github.com:hutiefang76/chatgpt-codex.git
-cd chatgpt-codex
-powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
-. .\.venv\Scripts\Activate.ps1
-chatgpt-codex channel register `
-  --workspace "C:\absolute\path\to\your\project" `
-  --public-base-url https://chatgpt-codex.example.com
-chatgpt-codex serve
-```
-
-If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process Bypass -Force` in that terminal and retry activation.
-
-By default, access stays active until the server is stopped or `chatgpt-codex channel revoke` is run. This is the recommended personal-use mode. If you intentionally want a short-lived session, start with `chatgpt-codex serve --ttl-minutes 120`.
-
-## Public HTTPS Route
-
-For ChatGPT web to call the local API, expose it through a public HTTPS route. With the built-in quick tunnel, run in another terminal — it captures the temporary `https://...trycloudflare.com` URL and saves it to config automatically, so a running `serve` picks it up without a manual `channel renew`:
-
-```bash
-chatgpt-codex tunnel
-```
-
-If you already have your own HTTPS route, point it at:
-
-```text
-http://127.0.0.1:8766
-```
-
-After the public URL is known:
-
-```bash
-chatgpt-codex api-smoke
-chatgpt-codex channel renew --public-base-url https://your-current-public-url
-chatgpt-codex channel status
-chatgpt-codex verify
-```
-
-Route choices:
-
-- `local-only`: no `cloudflared`, no domain, local testing only.
-- `built-in-quick-tunnel`: requires `cloudflared`, no domain, gives a temporary public HTTPS URL.
-- `custom-domain`: requires a domain, but this project does not require `cloudflared` unless your chosen routing does.
-- `existing-https-route`: no `cloudflared` and no new domain if you already have a public HTTPS URL.
-
-## Switching Projects In GPT
-
-Register every project locally first. GPT can only switch between these authorized names; it cannot switch to an arbitrary path typed in chat.
-
-```bash
-chatgpt-codex workspace add --name demo --path /Users/me/project/demo --activate
-chatgpt-codex workspace add --name notes --path "/Users/me/project/notes"
-chatgpt-codex workspace list
-```
-
-In ChatGPT, the user can say:
-
-```text
-What is the current project?
-Switch to notes.
-List the current directory.
-```
-
-The GPT should call `workspace_status`, `list_workspaces`, and `switch_workspace`, then show the active local directory before file, code, or command work.
-
-## ChatGPT Builder Setup
-
-If browser automation is approved in `.chatgpt-codex/permissions.json`, Codex should use Playwright first after the user logs in manually:
-
-```bash
-chatgpt-codex chatgpt-preflight
-chatgpt-codex builder open-login
-chatgpt-codex builder doctor
-chatgpt-codex builder payload --json
-chatgpt-codex builder configure --mode ui
-chatgpt-codex builder smoke
-```
-
-The login step should be an explicit handoff: open the Playwright browser for the user, wait for them to finish, then inspect the Builder page. The local CLI cannot prove account eligibility by itself; the reliable check is whether `https://chatgpt.com/gpts/editor` loads and exposes the Configure and Actions controls. ChatGPT Builder configuration is web-only, so the local code generates and verifies the fields while Playwright fills the web editor.
-
-For internal API discovery, run:
-
-```bash
-chatgpt-codex builder sniff
-chatgpt-codex builder configure --mode api
-```
-
-This keeps replay inside the same Playwright browser context and validates by refreshing the Builder page. If validation fails, use `builder configure --mode ui` or Computer Use fallback.
-
-Print the exact setup text:
-
-```bash
-chatgpt-codex gpt-instructions
-```
-
-In ChatGPT Builder:
-
-1. Open `Explore GPTs` -> `Create`.
-2. Paste the printed instructions into the GPT instructions.
-3. Add an Action.
-4. Authentication: `API key`.
-5. Auth type: `Bearer`.
-6. API key: output of `chatgpt-codex token`.
-7. Import schema URL: `https://your-domain/openapi.json`.
-8. Privacy policy: `https://your-domain/privacy`.
-9. Save as `Only me` unless you intentionally want to share it.
-
-## Available Actions
-
-- `list_files`: list files and directories.
-- `read_file`: read a UTF-8 file.
-- `search_text`: search workspace text.
-- `write_file`: create or replace a file.
-- `apply_patch`: apply a limited `apply_patch` style patch.
-- `exec_command`: run a shell command after safety checks.
-- `workspace_status`: show the active workspace name and local path.
-- `list_workspaces`: list authorized workspaces.
-- `switch_workspace`: switch to an authorized workspace by name.
-
-## Security Model
-
-Detailed lifecycle notes live in [docs/SECURITY.md](docs/SECURITY.md).
-
-This tool gives ChatGPT real access to a local workspace. Treat the bearer token like a password.
-
-Built-in guardrails:
-
-- All file paths must stay inside the configured workspace.
-- Channel registration binds the tool to the specific workspace path recorded in `.chatgpt-codex/config.json`.
-- Project switching is limited to workspaces registered in `.chatgpt-codex/config.json`.
-- Hidden implementation state such as `.git`, `.venv`, `node_modules`, and caches are skipped by file listing and search.
-- POST actions require `Authorization: Bearer <token>`.
-- The public tunnel URL alone cannot run Actions. Without the bearer token, POST Actions return `401`.
-- Personal-use access does not expire by default. Optional expiry is available with `serve --ttl-minutes` or `access grant --ttl-minutes`.
-- `rotate-token` changes the bearer token; a running server reloads the token from config before each Action.
-- `channel revoke` immediately expires access and rotates the token without printing the new secret; `channel renew` reactivates access and prints the token for Builder.
-- Commands like `rm -rf` (in any flag order), `dd of=`, `find -delete`, `git reset --hard`, `sudo`, `reboot`, `mkfs`, and writes to raw disk devices are blocked. This deny-list is a best-effort guardrail, not a sandbox: with real shell access it can always be bypassed, so the actual safeguards are reviewing each Action in ChatGPT and running against one scoped workspace, never your home directory.
-- The project never needs your ChatGPT password, cookies, or OpenAI API key.
-
-Still important:
-
-- Do not publish your `.chatgpt-codex/config.json`.
-- Do not share a GPT that uses your private bearer token.
-- Review action confirmations in ChatGPT before approving calls.
-- Run it against one project workspace, not your home directory.
-
-## Development
-
-Run tests on macOS:
+## Development Verification
 
 ```bash
 python3 -m unittest discover -s tests
-```
-
-Run tests on Windows PowerShell:
-
-```powershell
 py -3 -m unittest discover -s tests
+node --check scripts/chatgpt_builder_playwright.mjs
+chatgpt-codex setup-smoke
 ```
-
-Run without installing:
-
-```bash
-python3 -m chatgpt_codex --help
-```
-
-Windows PowerShell:
-
-```powershell
-py -3 -m chatgpt_codex --help
-```
-
-Stop the server and tunnel with `Ctrl-C` in their terminals.

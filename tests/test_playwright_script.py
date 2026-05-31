@@ -48,6 +48,45 @@ class PlaywrightScriptSelfTest(unittest.TestCase):
         self.assertTrue(checks["privacy_url"])
         self.assertTrue(checks["redacts_secrets"])
 
+    def test_setup_command_is_wired_for_product_flow(self):
+        payload = self._run_self_test()
+        checks = {item["name"]: item["ok"] for item in payload["checks"]}
+        self.assertTrue(checks["parses_setup_wait_seconds"])
+        self.assertTrue(checks["setup_timeout_step_detects_challenge"])
+
+    def test_smoke_is_not_just_url_open(self):
+        script = SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("SMOKE_PROMPT", script)
+        self.assertIn("workspace_status", script)
+        self.assertIn("isSmokeSuccessful", script)
+        self.assertNotIn("ok: Boolean(targetUrl)", script)
+
+    def test_setup_attempts_action_automation_before_manual_fallback(self):
+        script = SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("attemptActionSetup", script)
+        self.assertIn("action_attempt", script)
+        self.assertIn("schema_textarea", script)
+        self.assertIn("auth_token", script)
+
+    @unittest.skipUnless(shutil.which("npx"), "npx is required to test the packaged Playwright load path")
+    def test_self_test_passes_through_npx_package_playwright(self):
+        result = subprocess.run(
+            ["npx", "--yes", "--package", "playwright", "node", str(SCRIPT), "self-test"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["ok"], msg=result.stdout)
+        self.assertTrue(payload["playwright_loaded"], msg=result.stdout)
+        checks = {item["name"]: item["ok"] for item in payload["checks"]}
+        self.assertTrue(checks["playwright_has_chromium"], msg=result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
