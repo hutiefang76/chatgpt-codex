@@ -439,6 +439,42 @@ class CliTests(unittest.TestCase):
         self.assertEqual(len(calls), 4)
         self.assertEqual(sleep.call_count, 3)
 
+    def test_verify_request_uses_dns_fallback_without_external_curl(self):
+        class FakeOpener:
+            def open(self, *_args, **_kwargs):
+                raise cli.URLError("[Errno 8] nodename nor servname provided, or not known")
+
+        with mock.patch("chatgpt_codex.cli.build_opener", return_value=FakeOpener()):
+            with mock.patch("chatgpt_codex.cli._resolve_host_with_doh", return_value=["203.0.113.10"]):
+                with mock.patch("chatgpt_codex.cli._verify_request_via_resolved_ip", return_value={"url": "https://missing.example/health", "ok": True, "status": 200, "preview": "{}"}):
+                    check = cli._verify_request(
+                        cli.Request("https://missing.example/health", method="GET"),
+                        5,
+                        "https://missing.example/health",
+                    )
+
+        self.assertTrue(check["ok"])
+        self.assertTrue(check["dns_fallback"])
+        self.assertEqual(check["resolved_ip"], "203.0.113.10")
+        self.assertIn("nodename nor servname", check["system_dns_error"])
+
+    def test_extract_answer_ips_ignores_nslookup_resolver_address(self):
+        text = """
+Server:        8.8.8.8
+Address:       8.8.8.8#53
+
+Non-authoritative answer:
+Name:   generated.trycloudflare.com
+Address: 104.16.231.132
+Name:   generated.trycloudflare.com
+Address: 104.16.230.132
+"""
+
+        self.assertEqual(
+            cli._extract_answer_ips(text),
+            ["104.16.231.132", "104.16.230.132"],
+        )
+
     def test_setup_keeps_bridge_running_when_builder_returns_agent_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "config.json"

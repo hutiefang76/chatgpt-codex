@@ -1,11 +1,14 @@
 import argparse
 import contextlib
+import http.client
 import io
 import json
 import os
 import platform
 import re
 import shutil
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -13,6 +16,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
@@ -878,7 +882,12 @@ def _verify_request(request: Request, timeout: int, url: str) -> dict:
         content = exc.read(4096).decode("utf-8", errors="replace")
         return {"url": url, "ok": False, "status": exc.code, "error": content[:300]}
     except (OSError, URLError) as exc:
-        return {"url": url, "ok": False, "status": 0, "error": str(exc)}
+        check = {"url": url, "ok": False, "status": 0, "error": str(exc)}
+        if _is_dns_resolution_error(check):
+            fallback = _verify_request_with_dns_fallback(request, timeout, url, check["error"])
+            if fallback:
+                return fallback
+        return check
 
 
 def _is_dns_resolution_error(check: dict) -> bool:
@@ -893,6 +902,128 @@ def _is_dns_resolution_error(check: dict) -> bool:
         "dns",
     )
     return check.get("status") == 0 and any(marker in error for marker in markers)
+
+
+class _ResolvedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, host: str, ip: str, port: int, timeout: int):
+        super().__init__(host, port=port, timeout=max(1, int(timeout or 10)), context=ssl.create_default_context())
+        self._resolved_ip = ip
+
+    def connect(self):
+        sock = socket.create_connection((self._resolved_ip, self.port), self.timeout, self.source_address)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+def _verify_request_with_dns_fallback(request: Request, timeout: int, url: str, system_dns_error: str):
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        return None
+    last_check = None
+    for ip in _resolve_host_with_doh(parsed.hostname, timeout):
+        check = _verify_request_via_resolved_ip(request, timeout, url, ip)
+        check["dns_fallback"] = True
+        check["resolved_ip"] = ip
+        check["system_dns_error"] = system_dns_error
+        if check["ok"]:
+            return check
+        last_check = check
+    return last_check
+
+
+def _resolve_host_with_doh(host: str, timeout: int) -> list[str]:
+    addresses = _resolve_host_with_public_dns_command(host, timeout)
+    if addresses:
+        return addresses
+    endpoints = [
+        f"https://dns.google/resolve?name={quote(host)}&type=A",
+        f"https://cloudflare-dns.com/dns-query?name={quote(host)}&type=A",
+    ]
+    opener = build_opener(ProxyHandler({}))
+    addresses = []
+    for endpoint in endpoints:
+        request = Request(endpoint, method="GET", headers={"Accept": "application/dns-json"})
+        try:
+            response = opener.open(request, timeout=max(1, min(int(timeout or 10), 10)))
+            body = json.loads(response.read().decode("utf-8", errors="replace"))
+        except (HTTPError, OSError, URLError, ValueError):
+            continue
+        for answer in body.get("Answer", []) or []:
+            if answer.get("type") == 1:
+                data = str(answer.get("data", "")).strip()
+                if re.match(r"^\d{1,3}(?:\.\d{1,3}){3}$", data) and data not in addresses:
+                    addresses.append(data)
+        if addresses:
+            break
+    return addresses
+
+
+def _resolve_host_with_public_dns_command(host: str, timeout: int) -> list[str]:
+    commands = []
+    if shutil.which("dig"):
+        commands.extend(
+            [
+                ["dig", "@8.8.8.8", "+short", host],
+                ["dig", "@1.1.1.1", "+short", host],
+            ]
+        )
+    if shutil.which("nslookup"):
+        commands.extend(
+            [
+                ["nslookup", host, "8.8.8.8"],
+                ["nslookup", host, "1.1.1.1"],
+            ]
+        )
+    addresses = []
+    command_timeout = max(1, min(int(timeout or 10), 5))
+    for command in commands:
+        try:
+            proc = subprocess.run(command, capture_output=True, text=True, timeout=command_timeout, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        text = f"{proc.stdout}\n{proc.stderr}"
+        for ip in _extract_answer_ips(text):
+            if ip not in addresses:
+                addresses.append(ip)
+        if addresses:
+            break
+    return addresses
+
+
+def _extract_answer_ips(text: str) -> list[str]:
+    addresses = []
+    answer_section = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "non-authoritative answer" in line.lower() or line.lower().startswith("name:"):
+            answer_section = True
+        if not answer_section and not re.match(r"^\d{1,3}(?:\.\d{1,3}){3}$", line):
+            continue
+        for ip in re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", line):
+            if ip not in addresses:
+                addresses.append(ip)
+    return addresses
+
+
+def _verify_request_via_resolved_ip(request: Request, timeout: int, url: str, ip: str) -> dict:
+    parsed = urlsplit(url)
+    port = parsed.port or 443
+    path = urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
+    headers = {name: value for name, value in request.header_items()}
+    headers.setdefault("Host", parsed.netloc)
+    conn = _ResolvedHTTPSConnection(parsed.hostname or "", ip, port, timeout)
+    try:
+        conn.request(request.get_method(), path, body=request.data, headers=headers)
+        response = conn.getresponse()
+        content = response.read().decode("utf-8", errors="replace")
+        if 200 <= response.status < 300:
+            return {"url": url, "ok": True, "status": response.status, "preview": content[:300], "_content": content}
+        return {"url": url, "ok": False, "status": response.status, "error": content[:300]}
+    except (OSError, http.client.HTTPException) as exc:
+        return {"url": url, "ok": False, "status": 0, "error": str(exc)}
+    finally:
+        conn.close()
 
 
 def _api_smoke(timeout: int) -> dict:
