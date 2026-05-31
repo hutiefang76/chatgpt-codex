@@ -881,6 +881,20 @@ def _verify_request(request: Request, timeout: int, url: str) -> dict:
         return {"url": url, "ok": False, "status": 0, "error": str(exc)}
 
 
+def _is_dns_resolution_error(check: dict) -> bool:
+    error = str(check.get("error", "")).lower()
+    markers = (
+        "could not resolve",
+        "name does not resolve",
+        "name or service not known",
+        "nodename nor servname",
+        "no address associated with hostname",
+        "temporary failure in name resolution",
+        "dns",
+    )
+    return check.get("status") == 0 and any(marker in error for marker in markers)
+
+
 def _api_smoke(timeout: int) -> dict:
     with tempfile.TemporaryDirectory(prefix="chatgpt-codex-api-smoke-") as tmp:
         root = Path(tmp)
@@ -1624,9 +1638,20 @@ def _terminate(proc) -> None:
 def _wait_health(base_url: str, timeout: int) -> bool:
     base = base_url.rstrip("/")
     deadline = time.monotonic() + max(2, min(int(timeout or 10) * 3, 60))
+    dns_deadline = None
+    dns_fast_fail_after = max(3, min(int(timeout or 10), 12))
     while time.monotonic() < deadline:
-        if _verify_get(f"{base}/health", 5)["ok"]:
+        check = _verify_get(f"{base}/health", 5)
+        if check["ok"]:
             return True
+        now = time.monotonic()
+        if _is_dns_resolution_error(check):
+            if dns_deadline is None:
+                dns_deadline = now + dns_fast_fail_after
+            elif now >= dns_deadline:
+                return False
+        else:
+            dns_deadline = None
         time.sleep(1.0)
     return False
 

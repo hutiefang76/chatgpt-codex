@@ -417,6 +417,28 @@ class CliTests(unittest.TestCase):
             self.assertIn("terminate", calls)
             self.assertIn("verify_actions", calls)
 
+    def test_wait_health_fast_fails_unresolvable_quick_tunnel_dns(self):
+        calls = []
+        ticks = iter([0, 0, 0, 1, 1, 2, 2, 3, 3])
+
+        def fake_verify_get(url, timeout):
+            calls.append((url, timeout))
+            return {
+                "url": url,
+                "ok": False,
+                "status": 0,
+                "error": "<urlopen error [Errno 8] nodename nor servname provided, or not known>",
+            }
+
+        with mock.patch("chatgpt_codex.cli._verify_get", side_effect=fake_verify_get):
+            with mock.patch("chatgpt_codex.cli.time.monotonic", side_effect=lambda: next(ticks)):
+                with mock.patch("chatgpt_codex.cli.time.sleep") as sleep:
+                    ok = cli._wait_health("https://missing.trycloudflare.com", 3)
+
+        self.assertFalse(ok)
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(sleep.call_count, 3)
+
     def test_setup_keeps_bridge_running_when_builder_returns_agent_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "config.json"
